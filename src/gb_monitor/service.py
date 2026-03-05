@@ -21,6 +21,7 @@ class MonitorService:
     storage: Storage
     collectors: list[Collector]
     notifier: FeishuNotifier
+    active_platforms: set[str] | None = None
 
     def run(self, mode: str = "scheduled", dry_run: bool = False, notify: bool = True) -> RunSummary:
         if mode not in {"scheduled", "all"}:
@@ -41,6 +42,10 @@ class MonitorService:
         total_stores = 0
 
         for collector in self.collectors:
+            if self.active_platforms is not None and collector.platform not in self.active_platforms:
+                skipped_tasks.append(f"{collector.task_name}(no_account_binding)")
+                continue
+
             last_success = self.storage.get_last_success(collector.task_name)
             if mode == "scheduled" and not should_run(now, collector.category, last_success):
                 skipped_tasks.append(collector.task_name)

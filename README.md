@@ -25,6 +25,7 @@
 - 评价窗口：10:00-20:00，间隔 2 小时
 - 外卖窗口：10:30-12:30、17:00-19:00，间隔 30 分钟
 - 支持 `scheduled`（按窗口）与 `all`（强制全量）两种模式
+- 运行时会读取门店注册表，只执行“已绑定账号”的平台任务
 
 ### 3) 存储层
 - SQLite 持久化
@@ -43,6 +44,7 @@ src/gb_monitor/
   cli.py           # 命令行入口
   config.py        # 环境配置
   collectors.py    # 采集器实现（示例文件驱动）
+  store_registry.py # 多门店/多账号注册表
   schedule.py      # 调度规则
   storage.py       # SQLite 持久化
   service.py       # 任务编排与运行
@@ -50,10 +52,12 @@ src/gb_monitor/
 examples/
   review_*.json
   delivery_*.json  # MVP 示例输入
+  stores_registry.json
 tests/
   test_schedule.py
   test_collectors.py
   test_service.py
+  test_store_registry.py
 ```
 
 ## 快速开始
@@ -73,7 +77,7 @@ pip install -e .
 
 ```bash
 cp .env.example .env
-# 按需修改 .env 中的 webhook、数据文件路径、数据库路径
+# 按需修改 .env 中的 webhook、数据文件路径、数据库路径、门店注册表路径
 set -a; source .env; set +a
 ```
 
@@ -93,10 +97,18 @@ gbm run --mode all --no-notify
 gbm run --mode scheduled --no-notify
 ```
 
+运行时会打印 `registry_active_platforms=...`，用于确认当前账号绑定覆盖的平台范围。
+
 ### 查看统计
 
 ```bash
 gbm report --hours 24
+```
+
+### 校验门店账号注册表（无统一账号场景）
+
+```bash
+gbm validate-registry --registry examples/stores_registry.json
 ```
 
 ### 运行测试
@@ -115,7 +127,15 @@ PYTHONPATH=src python -m unittest discover -s tests -v
 ## 下一步（接入真实生产数据）
 
 1. 将 `examples/*.json` 输入替换为真实平台适配器（登录态、反爬策略、重试/限速）。
-2. 增加门店配置中心（多门店批量管理、优先级与动态开关）。
+2. 对接真实门店注册表，支持“每个门店单独账号、无统一后台”的账号编排模式。
 3. 增加告警策略（连续失败阈值、指标异常波动告警、Webhook 重试队列）。
 4. 增加部署编排（systemd/cron + 健康检查 + 自动恢复）。
 
+## 无统一账号场景的落地策略
+
+针对“多门店、分散账号、没有统一 API 后台”的情况，系统采用门店注册表驱动：
+
+- 每个门店独立维护平台账号映射（`stores_registry.json`）
+- 每个平台绑定认证模式：`api` / `cookie` / `manual`
+- 采集任务按“门店 x 平台”切片，失败隔离，不影响其他门店
+- 账号责任人（`login_owner`）可追踪，便于失效会话排障

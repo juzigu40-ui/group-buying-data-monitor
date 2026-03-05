@@ -22,6 +22,7 @@ class Settings:
     feishu_webhook: str | None
     feishu_at_mobiles: list[str]
     data_files: dict[str, Path]
+    store_registry_path: Path
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -45,6 +46,10 @@ class Settings:
             "delivery_jdwm": _get_env("GBM_JDWM_FILE", "examples/delivery_jdwm.json"),
         }
         data_files = {k: Path(v) for k, v in file_env.items() if v}
+        store_registry_path = Path(
+            _get_env("GBM_STORE_REGISTRY", "examples/stores_registry.json")
+            or "examples/stores_registry.json"
+        )
 
         return cls(
             timezone=timezone,
@@ -53,4 +58,5 @@ class Settings:
             feishu_webhook=webhook,
             feishu_at_mobiles=feishu_at_mobiles,
             data_files=data_files,
+            store_registry_path=store_registry_path,
         )

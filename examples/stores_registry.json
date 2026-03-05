@@ -1,0 +1,54 @@
+{
+  "stores": [
+    {
+      "store_id": "sh-jingan-001",
+      "store_name": "杨记烤鱼(静安店)",
+      "city": "上海",
+      "platforms": {
+        "dianping": {
+          "auth_mode": "cookie",
+          "account_alias": "dp_jingan_shop_01",
+          "login_owner": "店长-静安",
+          "enabled": true
+        },
+        "douyin": {
+          "auth_mode": "manual",
+          "account_alias": "dy_jingan_shop_01",
+          "login_owner": "店长-静安",
+          "enabled": true
+        },
+        "meituan": {
+          "auth_mode": "cookie",
+          "account_alias": "mt_jingan_shop_01",
+          "login_owner": "运营-华东",
+          "enabled": true
+        }
+      }
+    },
+    {
+      "store_id": "sh-pudong-002",
+      "store_name": "杨记烤鱼(浦东店)",
+      "city": "上海",
+      "platforms": {
+        "dianping": {
+          "auth_mode": "cookie",
+          "account_alias": "dp_pudong_shop_02",
+          "login_owner": "店长-浦东",
+          "enabled": true
+        },
+        "eleme": {
+          "auth_mode": "manual",
+          "account_alias": "eleme_pudong_shop_02",
+          "login_owner": "运营-华东",
+          "enabled": true
+        },
+        "jdwm": {
+          "auth_mode": "manual",
+          "account_alias": "jdwm_pudong_shop_02",
+          "login_owner": "运营-华东",
+          "enabled": true
+        }
+      }
+    }
+  ]
+}
