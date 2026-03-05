@@ -9,6 +9,7 @@ from gb_monitor.feishu import FeishuNotifier, build_manual_report
 from gb_monitor.logging import configure_logging
 from gb_monitor.service import MonitorService, build_default_collectors
 from gb_monitor.store_registry import (
+    enabled_store_ids_by_platform,
     enabled_platform_binding_counts,
     load_registry,
     summarize_registry,
@@ -74,9 +75,11 @@ def main() -> int:
 
     if args.command == "run":
         active_platforms: set[str] | None = None
+        allowed_store_ids: dict[str, set[str]] | None = None
         try:
             registry_entries = load_registry(settings.store_registry_path)
             binding_counts = enabled_platform_binding_counts(registry_entries)
+            allowed_store_ids = enabled_store_ids_by_platform(registry_entries)
             active_platforms = {p for p, c in binding_counts.items() if c > 0}
             print(
                 "registry_active_platforms="
@@ -85,6 +88,7 @@ def main() -> int:
         except FileNotFoundError:
             # Registry is optional for MVP local smoke runs.
             active_platforms = None
+            allowed_store_ids = None
 
         service = MonitorService(
             settings=settings,
@@ -95,6 +99,7 @@ def main() -> int:
                 at_mobiles=settings.feishu_at_mobiles,
             ),
             active_platforms=active_platforms,
+            allowed_store_ids_by_platform=allowed_store_ids,
         )
         summary = service.run(
             mode=args.mode,

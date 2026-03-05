@@ -111,6 +111,8 @@ gbm report --hours 24
 gbm validate-registry --registry examples/stores_registry.json
 ```
 
+说明：采集数据中的 `store_id` 需要与注册表里的 `store_id` 对齐，运行时仅保留已绑定门店的数据。
+
 ### 运行测试
 
 ```bash

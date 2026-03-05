@@ -22,6 +22,7 @@ class MonitorService:
     collectors: list[Collector]
     notifier: FeishuNotifier
     active_platforms: set[str] | None = None
+    allowed_store_ids_by_platform: dict[str, set[str]] | None = None
 
     def run(self, mode: str = "scheduled", dry_run: bool = False, notify: bool = True) -> RunSummary:
         if mode not in {"scheduled", "all"}:
@@ -53,6 +54,9 @@ class MonitorService:
 
             try:
                 metrics = collector.collect(now)
+                if self.allowed_store_ids_by_platform is not None:
+                    allowed_store_ids = self.allowed_store_ids_by_platform.get(collector.platform, set())
+                    metrics = [m for m in metrics if m.store_id in allowed_store_ids]
                 metric_count = len(metrics)
                 store_count = len({(m.store_id, m.store_name) for m in metrics})
 

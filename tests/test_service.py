@@ -80,9 +80,11 @@ class ServiceTests(unittest.TestCase):
             collectors=build_default_collectors(settings),
             notifier=FeishuNotifier(None, []),
             active_platforms={"dianping"},
+            allowed_store_ids_by_platform={"dianping": {"non-existent-store-id"}},
         )
         summary = service.run(mode="all", dry_run=False, notify=False)
         self.assertEqual(len(summary.collector_results), 1)
+        self.assertEqual(summary.total_metrics, 0)
         self.assertIn("review_douyin(no_account_binding)", summary.skipped_tasks)
         self.assertIn("review_amap(no_account_binding)", summary.skipped_tasks)
 

@@ -114,3 +114,13 @@ def enabled_platform_binding_counts(entries: list[StoreEntry]) -> dict[str, int]
                 continue
             counts[platform] = counts.get(platform, 0) + 1
     return counts
+
+
+def enabled_store_ids_by_platform(entries: list[StoreEntry]) -> dict[str, set[str]]:
+    mapping: dict[str, set[str]] = {}
+    for store in entries:
+        for platform, auth in store.platforms.items():
+            if not auth.enabled:
+                continue
+            mapping.setdefault(platform, set()).add(store.store_id)
+    return mapping

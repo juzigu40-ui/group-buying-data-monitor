@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 
 from gb_monitor.store_registry import (
+    enabled_store_ids_by_platform,
     enabled_platform_binding_counts,
     load_registry,
     summarize_registry,
@@ -25,6 +26,10 @@ class StoreRegistryTests(unittest.TestCase):
         self.assertEqual(platform_counts["dianping"], 2)
         self.assertEqual(platform_counts["douyin"], 1)
         self.assertEqual(platform_counts["meituan"], 1)
+
+        store_ids = enabled_store_ids_by_platform(entries)
+        self.assertIn("sh-jingan-001", store_ids["dianping"])
+        self.assertIn("sh-pudong-002", store_ids["dianping"])
 
 
 if __name__ == "__main__":
