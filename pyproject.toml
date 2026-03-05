@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "group-buying-data-monitor"
+version = "0.1.0"
+description = "Group buying and delivery data monitor with Feishu reporting"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+  { name = "Juzi Valley Research Team" }
+]
+dependencies = []
+
+[project.scripts]
+gbm = "gb_monitor.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

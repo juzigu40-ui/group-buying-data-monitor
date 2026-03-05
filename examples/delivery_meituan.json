@@ -1,0 +1,18 @@
+{
+  "captured_at": "2026-03-05T11:00:00+08:00",
+  "stores": [
+    {
+      "store_id": "mt_001",
+      "store_name": "杨记烤鱼(静安店)",
+      "metrics": {
+        "valid_orders": 62,
+        "real_avg_order_value": 58.3,
+        "order_conversion": 0.19,
+        "entry_rate": 0.31,
+        "district_rank": 6,
+        "repurchase_ratio": 0.24,
+        "store_rating": 4.7
+      }
+    }
+  ]
+}

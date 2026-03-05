@@ -1,0 +1,16 @@
+{
+  "captured_at": "2026-03-05T10:00:00+08:00",
+  "stores": [
+    {
+      "store_id": "amap_001",
+      "store_name": "杨记烤鱼(静安店)",
+      "metrics": {
+        "new_reviews": 8,
+        "store_score": 4.6,
+        "local_reviewer_count": 83,
+        "navigation_feedback_count": 41,
+        "return_visit_ratio": 0.28
+      }
+    }
+  ]
+}

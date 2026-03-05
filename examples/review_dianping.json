@@ -1,0 +1,16 @@
+{
+  "captured_at": "2026-03-05T10:00:00+08:00",
+  "stores": [
+    {
+      "store_id": "dp_001",
+      "store_name": "杨记烤鱼(静安店)",
+      "metrics": {
+        "new_reviews": 16,
+        "taste_score": 4.7,
+        "environment_score": 4.6,
+        "service_score": 4.5,
+        "consumption_verified_ratio": 0.82
+      }
+    }
+  ]
+}

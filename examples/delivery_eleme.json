@@ -1,0 +1,18 @@
+{
+  "captured_at": "2026-03-05T11:00:00+08:00",
+  "stores": [
+    {
+      "store_id": "eleme_001",
+      "store_name": "杨记烤鱼(静安店)",
+      "metrics": {
+        "valid_orders": 38,
+        "real_avg_order_value": 52.8,
+        "order_conversion": 0.16,
+        "entry_rate": 0.27,
+        "district_rank": 9,
+        "repurchase_ratio": 0.21,
+        "store_rating": 4.6
+      }
+    }
+  ]
+}
