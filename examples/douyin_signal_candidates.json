@@ -8,7 +8,10 @@
       "poi_name": "杨记烤鱼(静安店)",
       "author_name": "探店阿青",
       "url": "https://example.com/douyin/dy-001",
-      "published_at": "2026-03-06T10:00:00+08:00"
+      "published_at": "2026-03-06T10:00:00+08:00",
+      "like_count": 268,
+      "comment_count": 24,
+      "share_count": 8
     },
     {
       "content_id": "dy-002",
@@ -17,7 +20,10 @@
       "poi_name": "杨记烤鱼(浦东店)",
       "author_name": "吃货老周",
       "url": "https://example.com/douyin/dy-002",
-      "published_at": "2026-03-06T10:05:00+08:00"
+      "published_at": "2026-03-06T10:05:00+08:00",
+      "like_count": 152,
+      "comment_count": 10,
+      "share_count": 4
     },
     {
       "content_id": "dy-003",
@@ -26,7 +32,10 @@
       "poi_name": "杨记烤鱼(静安店)",
       "author_name": "美食巡街",
       "url": "https://example.com/douyin/dy-003",
-      "published_at": "2026-03-06T10:10:00+08:00"
+      "published_at": "2026-03-06T10:10:00+08:00",
+      "like_count": 48,
+      "comment_count": 7,
+      "share_count": 2
     },
     {
       "content_id": "dy-004",
@@ -35,7 +44,22 @@
       "poi_name": "",
       "author_name": "创业老王",
       "url": "https://example.com/douyin/dy-004",
-      "published_at": "2026-03-06T10:12:00+08:00"
+      "published_at": "2026-03-06T10:12:00+08:00",
+      "like_count": 12,
+      "comment_count": 0,
+      "share_count": 0
+    },
+    {
+      "content_id": "dy-005",
+      "title": "杨记烤鱼这家店最近真火",
+      "content": "朋友说静安和浦东都不错，周末再去看看。",
+      "poi_name": "",
+      "author_name": "路过吃一口",
+      "url": "https://example.com/douyin/dy-005",
+      "published_at": "2026-03-06T10:14:00+08:00",
+      "like_count": 35,
+      "comment_count": 5,
+      "share_count": 1
     }
   ]
 }

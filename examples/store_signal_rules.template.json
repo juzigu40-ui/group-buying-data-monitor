@@ -10,17 +10,26 @@
         "静安寺烤鱼",
         "双人烤鱼套餐"
       ],
+      "required_all_keywords": [
+        "静安"
+      ],
       "exclude_keywords": [
         "浦东店",
         "加盟培训",
         "招聘",
         "无关品牌示例"
       ],
+      "author_include_keywords": [],
+      "author_exclude_keywords": [
+        "招商",
+        "加盟"
+      ],
       "required_any_fields": [
         "title",
         "content",
         "poi_name"
       ],
+      "min_score": 6,
       "push_examples": [
         {
           "url": "https://example.com/post/should-push-1",

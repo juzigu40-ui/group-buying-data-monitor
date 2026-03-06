@@ -48,7 +48,10 @@ class SignalRule:
     platform: str
     include_keywords: list[str]
     exclude_keywords: list[str]
+    required_all_keywords: list[str]
     required_any_fields: list[str]
+    author_include_keywords: list[str]
+    author_exclude_keywords: list[str]
     min_score: int = 5
 
 
@@ -62,6 +65,9 @@ class SignalCandidate:
     author_name: str
     url: str
     published_at: str | None
+    like_count: int
+    comment_count: int
+    share_count: int
     raw_payload: dict[str, Any]
 
 
@@ -73,7 +79,13 @@ class SignalMatch:
     content_id: str
     url: str
     title: str
+    author_name: str
+    published_at: str | None
+    like_count: int
+    comment_count: int
+    share_count: int
     score: int
+    confidence: str
     matched_terms: list[str]
     matched_fields: list[str]
     reason: str

@@ -5,7 +5,7 @@ import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
 
-from gb_monitor.models import MetricDatum
+from gb_monitor.models import MetricDatum, SignalMatch
 
 
 class Storage:
@@ -57,6 +57,18 @@ class Storage:
                     task_name TEXT PRIMARY KEY,
                     last_success_at TEXT
                 );
+
+                CREATE TABLE IF NOT EXISTS signal_dispatches (
+                    platform TEXT NOT NULL,
+                    store_id TEXT NOT NULL,
+                    content_id TEXT NOT NULL,
+                    dispatched_at TEXT NOT NULL,
+                    score INTEGER NOT NULL,
+                    PRIMARY KEY(platform, store_id, content_id)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_signal_dispatches_time
+                    ON signal_dispatches(dispatched_at);
                 """
             )
 
@@ -150,3 +162,61 @@ class Storage:
         merged = [(platform, metric_key, count) for (platform, metric_key), count in counter.items()]
         merged.sort(key=lambda x: (x[0], -x[2], x[1]))
         return merged
+
+    def filter_new_signal_matches(
+        self,
+        matches: list[SignalMatch],
+        now: datetime,
+        dedupe_hours: int,
+    ) -> list[SignalMatch]:
+        if dedupe_hours <= 0 or not matches:
+            return matches
+
+        threshold = now.timestamp() - dedupe_hours * 3600
+        with self.connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT platform, store_id, content_id, dispatched_at
+                FROM signal_dispatches
+                """
+            ).fetchall()
+
+        recent_keys: set[tuple[str, str, str]] = set()
+        for platform, store_id, content_id, dispatched_at in rows:
+            try:
+                ts = datetime.fromisoformat(dispatched_at).timestamp()
+            except ValueError:
+                continue
+            if ts >= threshold:
+                recent_keys.add((platform, store_id, content_id))
+
+        return [
+            item
+            for item in matches
+            if (item.platform, item.store_id, item.content_id) not in recent_keys
+        ]
+
+    def record_signal_dispatches(self, dispatched_at: datetime, matches: list[SignalMatch]) -> None:
+        if not matches:
+            return
+        rows = [
+            (
+                item.platform,
+                item.store_id,
+                item.content_id,
+                dispatched_at.isoformat(),
+                item.score,
+            )
+            for item in matches
+        ]
+        with self.connect() as conn:
+            conn.executemany(
+                """
+                INSERT INTO signal_dispatches(platform, store_id, content_id, dispatched_at, score)
+                VALUES(?,?,?,?,?)
+                ON CONFLICT(platform, store_id, content_id) DO UPDATE SET
+                    dispatched_at = excluded.dispatched_at,
+                    score = excluded.score
+                """,
+                rows,
+            )

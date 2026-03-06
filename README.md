@@ -56,8 +56,14 @@ flowchart LR
 - 规则能力：
   - 包含词
   - 排除词
+  - 必须同时命中的强约束词
   - 必须命中的字段
+  - 作者白名单 / 黑名单
   - 命中分数阈值
+  - 热度加权（点赞 / 评论 / 转发）
+  - 发布时间加权
+  - 跨门店歧义抑制
+  - 重复推送抑制（按门店 + 内容去重）
 - 内容输入流示例：`examples/douyin_signal_candidates.json`
 - 命令行精筛：`gbm score-signals --input <path>`
 
@@ -69,6 +75,8 @@ flowchart LR
 - 采集结果落库
 - 报表/飞书通知输出
 - 实时舆情规则匹配、排除词过滤、命中打分
+- 同一内容跨门店误判抑制
+- 同一内容重复推送抑制
 
 当前 PR 还没有直接交付“生产级实时舆情”：
 - 现有 `score-signals` 是可运行的门店精筛内核，不是最终版平台适配器
@@ -169,6 +177,15 @@ gbm score-signals \
   --notify
 ```
 
+如果需要允许“一个内容同时命中多个门店”或调整重复推送窗口：
+
+```bash
+gbm score-signals \
+  --input examples/douyin_signal_candidates.json \
+  --allow-ambiguous \
+  --dedupe-hours 12
+```
+
 ### 运行测试
 
 ```bash
@@ -199,9 +216,9 @@ PYTHONPATH=src python -m unittest discover -s tests -v
 2. 引入排除规则
    - 同名无关门店、无关地点、常见误报词
 3. 内容命中打分
-   - 标题、正文、地点、账号、热度综合评分
+   - 标题、正文、地点、账号、热度、发布时间综合评分
 4. 结果分层
-   - 高置信直接推送，中置信待确认，低置信丢弃
+   - 高置信直接推送，中高置信待确认，低置信丢弃
 5. 后续再接经营数据
    - 只有接订单/经营数据后，才能继续做更稳的引流归因
 

@@ -66,6 +66,22 @@ def build_parser() -> argparse.ArgumentParser:
     score.add_argument("--min-score", type=int, default=0)
     score.add_argument("--json", action="store_true")
     score.add_argument("--notify", action="store_true")
+    score.add_argument(
+        "--dedupe-hours",
+        type=int,
+        default=24,
+        help="Suppress repeated push for the same store/content within N hours (default: 24)",
+    )
+    score.add_argument(
+        "--allow-ambiguous",
+        action="store_true",
+        help="Do not suppress one piece of content matching multiple stores with close scores",
+    )
+    score.add_argument(
+        "--mark-dispatched",
+        action="store_true",
+        help="Record current matched results into dispatch history even without webhook notify",
+    )
 
     return parser
 
@@ -152,23 +168,38 @@ def main() -> int:
 
     if args.command == "score-signals":
         rules_path = settings.signal_rules_path if not args.rules else Path(args.rules)
+        storage.init_schema()
         rules = load_signal_rules(rules_path)
         candidates = load_signal_candidates(Path(args.input))
+        now = datetime.now(settings.timezone)
         matches = match_candidates(
             rules=rules,
             candidates=candidates,
             min_score_override=(args.min_score if args.min_score > 0 else None),
+            allow_ambiguous=args.allow_ambiguous,
+        )
+        matches = storage.filter_new_signal_matches(
+            matches=matches,
+            now=now,
+            dedupe_hours=max(args.dedupe_hours, 0),
         )
         if args.json:
             print(json.dumps(matches_to_json(matches), ensure_ascii=False, indent=2))
         else:
-            report = build_signal_report(datetime.now(settings.timezone), matches)
+            report = build_signal_report(now, matches)
             print(report)
+            delivered = False
             if args.notify:
-                FeishuNotifier(
+                notifier = FeishuNotifier(
                     webhook=settings.feishu_webhook,
                     at_mobiles=settings.feishu_at_mobiles,
-                ).send_text(report)
+                )
+                delivered = notifier.send_text(report) or not settings.feishu_webhook
+            elif args.mark_dispatched:
+                delivered = True
+
+            if delivered:
+                storage.record_signal_dispatches(dispatched_at=now, matches=matches)
         return 0
 
     parser.print_help()
