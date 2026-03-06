@@ -1,0 +1,38 @@
+{
+  "stores": [
+    {
+      "store_id": "sh-jingan-001",
+      "store_name": "杨记烤鱼(静安店)",
+      "platform": "douyin",
+      "include_keywords": [
+        "杨记烤鱼静安店",
+        "杨记烤鱼 静安",
+        "静安寺烤鱼",
+        "双人烤鱼套餐"
+      ],
+      "exclude_keywords": [
+        "浦东店",
+        "加盟培训",
+        "招聘",
+        "无关品牌示例"
+      ],
+      "required_any_fields": [
+        "title",
+        "content",
+        "poi_name"
+      ],
+      "push_examples": [
+        {
+          "url": "https://example.com/post/should-push-1",
+          "reason": "明确提到静安店并带门店定位"
+        }
+      ],
+      "drop_examples": [
+        {
+          "url": "https://example.com/post/should-drop-1",
+          "reason": "只提到品牌，不是静安店"
+        }
+      ]
+    }
+  ]
+}
