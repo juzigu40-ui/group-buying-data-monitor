@@ -31,6 +31,7 @@ class ServiceTests(unittest.TestCase):
                 "delivery_jdwm": Path("examples/delivery_jdwm.json"),
             },
             store_registry_path=Path("examples/stores_registry.json"),
+            signal_rules_path=Path("examples/store_signal_rules.template.json"),
         )
 
         storage = Storage(db_path)
@@ -71,6 +72,7 @@ class ServiceTests(unittest.TestCase):
                 "delivery_jdwm": Path("examples/delivery_jdwm.json"),
             },
             store_registry_path=Path("examples/stores_registry.json"),
+            signal_rules_path=Path("examples/store_signal_rules.template.json"),
         )
 
         storage = Storage(db_path)

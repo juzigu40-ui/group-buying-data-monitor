@@ -39,3 +39,42 @@ class RunSummary:
     collector_results: list[CollectorResult]
     skipped_tasks: list[str]
     failed_tasks: list[str]
+
+
+@dataclass(slots=True)
+class SignalRule:
+    store_id: str
+    store_name: str
+    platform: str
+    include_keywords: list[str]
+    exclude_keywords: list[str]
+    required_any_fields: list[str]
+    min_score: int = 5
+
+
+@dataclass(slots=True)
+class SignalCandidate:
+    content_id: str
+    platform: str
+    title: str
+    content: str
+    poi_name: str
+    author_name: str
+    url: str
+    published_at: str | None
+    raw_payload: dict[str, Any]
+
+
+@dataclass(slots=True)
+class SignalMatch:
+    store_id: str
+    store_name: str
+    platform: str
+    content_id: str
+    url: str
+    title: str
+    score: int
+    matched_terms: list[str]
+    matched_fields: list[str]
+    reason: str
+    raw_payload: dict[str, Any]

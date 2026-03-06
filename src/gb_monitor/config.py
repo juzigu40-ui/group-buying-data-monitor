@@ -23,6 +23,7 @@ class Settings:
     feishu_at_mobiles: list[str]
     data_files: dict[str, Path]
     store_registry_path: Path
+    signal_rules_path: Path
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -50,6 +51,10 @@ class Settings:
             _get_env("GBM_STORE_REGISTRY", "examples/stores_registry.json")
             or "examples/stores_registry.json"
         )
+        signal_rules_path = Path(
+            _get_env("GBM_SIGNAL_RULES", "examples/store_signal_rules.template.json")
+            or "examples/store_signal_rules.template.json"
+        )
 
         return cls(
             timezone=timezone,
@@ -59,4 +64,5 @@ class Settings:
             feishu_at_mobiles=feishu_at_mobiles,
             data_files=data_files,
             store_registry_path=store_registry_path,
+            signal_rules_path=signal_rules_path,
         )

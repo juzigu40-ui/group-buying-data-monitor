@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 from datetime import datetime
 from pathlib import Path
 
@@ -8,6 +9,13 @@ from gb_monitor.config import Settings
 from gb_monitor.feishu import FeishuNotifier, build_manual_report
 from gb_monitor.logging import configure_logging
 from gb_monitor.service import MonitorService, build_default_collectors
+from gb_monitor.signal_rules import (
+    build_signal_report,
+    load_signal_candidates,
+    load_signal_rules,
+    match_candidates,
+    matches_to_json,
+)
 from gb_monitor.store_registry import (
     enabled_store_ids_by_platform,
     enabled_platform_binding_counts,
@@ -40,6 +48,24 @@ def build_parser() -> argparse.ArgumentParser:
         default="",
         help="Path to stores registry JSON (default: GBM_STORE_REGISTRY)",
     )
+
+    score = sub.add_parser(
+        "score-signals",
+        help="Run store-level real-time sentiment matching against content input",
+    )
+    score.add_argument(
+        "--input",
+        required=True,
+        help="Path to content items JSON",
+    )
+    score.add_argument(
+        "--rules",
+        default="",
+        help="Path to signal rules JSON (default: GBM_SIGNAL_RULES)",
+    )
+    score.add_argument("--min-score", type=int, default=0)
+    score.add_argument("--json", action="store_true")
+    score.add_argument("--notify", action="store_true")
 
     return parser
 
@@ -122,6 +148,27 @@ def main() -> int:
         print(f"stores={summary['store_count']}")
         print(f"platform_bindings={summary['platform_bindings']}")
         print(f"api={summary['api_bindings']} cookie={summary['cookie_bindings']} manual={summary['manual_bindings']}")
+        return 0
+
+    if args.command == "score-signals":
+        rules_path = settings.signal_rules_path if not args.rules else Path(args.rules)
+        rules = load_signal_rules(rules_path)
+        candidates = load_signal_candidates(Path(args.input))
+        matches = match_candidates(
+            rules=rules,
+            candidates=candidates,
+            min_score_override=(args.min_score if args.min_score > 0 else None),
+        )
+        if args.json:
+            print(json.dumps(matches_to_json(matches), ensure_ascii=False, indent=2))
+        else:
+            report = build_signal_report(datetime.now(settings.timezone), matches)
+            print(report)
+            if args.notify:
+                FeishuNotifier(
+                    webhook=settings.feishu_webhook,
+                    at_mobiles=settings.feishu_at_mobiles,
+                ).send_text(report)
         return 0
 
     parser.print_help()

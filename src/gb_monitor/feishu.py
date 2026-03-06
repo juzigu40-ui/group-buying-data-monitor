@@ -45,6 +45,9 @@ class FeishuNotifier:
 
     def send(self, summary: RunSummary) -> bool:
         text = self.build_text(summary)
+        return self.send_text(text)
+
+    def send_text(self, text: str) -> bool:
         if not self.webhook:
             logger.info("Feishu webhook not configured. Message:\n%s", text)
             return False

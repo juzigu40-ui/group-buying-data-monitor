@@ -1,7 +1,7 @@
 # 团购+外卖实时自动数据监测系统
 
 > 悬赏：¥3,000 RMB  
-> 当前状态：MVP v1（可运行骨架 + 可验收链路）
+> 当前状态：MVP v1（可运行骨架 + 门店级实时舆情精筛预置版）
 
 ## 项目目标
 
@@ -12,6 +12,20 @@
 - 采集结果结构化落库（SQLite）
 - 飞书推送可追踪
 - 支持定时窗口策略（评价每2小时、外卖每30分钟）
+- 门店级实时舆情规则匹配、排除词过滤与命中打分
+
+## 当前运行视图
+
+```mermaid
+flowchart LR
+    A["平台内容流<br/>点评 / 抖音 / 高德 / 外卖"] --> B["采集层<br/>Collector / 平台适配器"]
+    B --> C["门店注册表<br/>stores_registry.json"]
+    B --> D["实时舆情规则<br/>store_signal_rules.template.json"]
+    C --> E["任务编排<br/>调度 / 过滤 / 去重"]
+    D --> E
+    E --> F["SQLite<br/>runs / metrics"]
+    E --> G["飞书推送 / 本地报告"]
+```
 
 ## 当前交付范围（MVP v1）
 
@@ -37,6 +51,16 @@
 - 飞书机器人 webhook 推送
 - 无 webhook 时自动降级为本地日志输出
 
+### 5) 门店实时舆情精筛层（预置版）
+- 门店规则文件：`examples/store_signal_rules.template.json`
+- 规则能力：
+  - 包含词
+  - 排除词
+  - 必须命中的字段
+  - 命中分数阈值
+- 内容输入流示例：`examples/douyin_signal_candidates.json`
+- 命令行精筛：`gbm score-signals --input <path>`
+
 ## 当前版本边界
 
 当前 PR 解决的是“多门店、单店单账号、无统一后台”的运行底座，已经能完成：
@@ -44,11 +68,12 @@
 - 平台任务按账号绑定执行
 - 采集结果落库
 - 报表/飞书通知输出
+- 实时舆情规则匹配、排除词过滤、命中打分
 
-当前 PR 还没有直接交付“实时舆情精筛引擎”：
-- 现有 `review_douyin` 任务位是评价/内容采集入口，不是最终版精准舆情规则引擎
-- 实时舆情需要在现有底座上补一层“门店规则匹配 + 排除词过滤 + 命中打分 + 去重推送”
-- 这一层依赖真实门店样例来校准，否则容易继续出现误报
+当前 PR 还没有直接交付“生产级实时舆情”：
+- 现有 `score-signals` 是可运行的门店精筛内核，不是最终版平台适配器
+- 真实精度仍依赖客户提供门店样例做规则校准
+- 当前没有接真实订单/经营数据，因此只解决“内容命中是否准确”，不做最终引流归因
 
 ## 项目结构
 
@@ -57,6 +82,7 @@ src/gb_monitor/
   cli.py           # 命令行入口
   config.py        # 环境配置
   collectors.py    # 采集器实现（示例文件驱动）
+  signal_rules.py  # 门店实时舆情规则匹配与打分
   store_registry.py # 多门店/多账号注册表
   schedule.py      # 调度规则
   storage.py       # SQLite 持久化
@@ -65,12 +91,15 @@ src/gb_monitor/
 examples/
   review_*.json
   delivery_*.json  # MVP 示例输入
+  douyin_signal_candidates.json
   stores_registry.json
+  store_signal_rules.template.json
 tests/
   test_schedule.py
   test_collectors.py
   test_service.py
   test_store_registry.py
+  test_signal_rules.py
 ```
 
 ## 快速开始
@@ -90,7 +119,7 @@ pip install -e .
 
 ```bash
 cp .env.example .env
-# 按需修改 .env 中的 webhook、数据文件路径、数据库路径、门店注册表路径
+# 按需修改 .env 中的 webhook、数据文件路径、数据库路径、门店注册表路径、舆情规则路径
 set -a; source .env; set +a
 ```
 
@@ -126,6 +155,20 @@ gbm validate-registry --registry examples/stores_registry.json
 
 说明：采集数据中的 `store_id` 需要与注册表里的 `store_id` 对齐，运行时仅保留已绑定门店的数据。
 
+### 运行门店实时舆情精筛
+
+```bash
+gbm score-signals --input examples/douyin_signal_candidates.json
+```
+
+如果需要把高置信结果直接推到飞书：
+
+```bash
+gbm score-signals \
+  --input examples/douyin_signal_candidates.json \
+  --notify
+```
+
 ### 运行测试
 
 ```bash
@@ -138,6 +181,7 @@ PYTHONPATH=src python -m unittest discover -s tests -v
 - 高频抓取：已实现窗口化调度与任务游标
 - 数据分发：已实现飞书推送通道
 - 稳定性：运行状态落库，失败任务有记录
+- 精准过滤：已实现门店级规则匹配、排除词过滤与命中打分
 
 ## 下一步（接入真实生产数据）
 
@@ -146,7 +190,7 @@ PYTHONPATH=src python -m unittest discover -s tests -v
 3. 增加告警策略（连续失败阈值、指标异常波动告警、Webhook 重试队列）。
 4. 增加部署编排（systemd/cron + 健康检查 + 自动恢复）。
 
-## 下一步（门店实时舆情）
+## 下一步（门店实时舆情生产化）
 
 如果业务侧要从“基础监控”往“实时舆情监测”推进，建议按下面顺序落地：
 

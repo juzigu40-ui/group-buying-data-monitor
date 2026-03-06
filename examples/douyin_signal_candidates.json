@@ -1,0 +1,41 @@
+{
+  "platform": "douyin",
+  "items": [
+    {
+      "content_id": "dy-001",
+      "title": "静安寺附近这家杨记烤鱼静安店值不值？",
+      "content": "昨晚去杨记烤鱼静安店吃了双人烤鱼套餐，出餐很稳，适合朋友聚餐。",
+      "poi_name": "杨记烤鱼(静安店)",
+      "author_name": "探店阿青",
+      "url": "https://example.com/douyin/dy-001",
+      "published_at": "2026-03-06T10:00:00+08:00"
+    },
+    {
+      "content_id": "dy-002",
+      "title": "杨记烤鱼浦东店周末排队实录",
+      "content": "这次拍的是浦东店，不是静安店。",
+      "poi_name": "杨记烤鱼(浦东店)",
+      "author_name": "吃货老周",
+      "url": "https://example.com/douyin/dy-002",
+      "published_at": "2026-03-06T10:05:00+08:00"
+    },
+    {
+      "content_id": "dy-003",
+      "title": "静安寺烤鱼探店，双人烤鱼套餐怎么选",
+      "content": "这家门店离静安寺很近，双人烤鱼套餐比较适合第一次来的人。",
+      "poi_name": "杨记烤鱼(静安店)",
+      "author_name": "美食巡街",
+      "url": "https://example.com/douyin/dy-003",
+      "published_at": "2026-03-06T10:10:00+08:00"
+    },
+    {
+      "content_id": "dy-004",
+      "title": "杨记烤鱼加盟培训靠不靠谱",
+      "content": "今天聊的是招商和培训，不是门店探店内容。",
+      "poi_name": "",
+      "author_name": "创业老王",
+      "url": "https://example.com/douyin/dy-004",
+      "published_at": "2026-03-06T10:12:00+08:00"
+    }
+  ]
+}
