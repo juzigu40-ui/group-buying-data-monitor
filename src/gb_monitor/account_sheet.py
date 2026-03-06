@@ -31,11 +31,15 @@ def import_account_sheet(xlsx_path: Path, profile_dir: Path) -> dict[str, Path]:
     store_payload = build_store_registry_payload(store_id, records)
     login_payload = build_login_inventory_payload(store_id, records)
     checklist_text = build_login_checklist(records)
+    signal_rules_payload = build_signal_rules_payload(store_id, primary)
+    verification_plan_payload = build_verification_plan_payload(records)
 
     profile_dir.mkdir(parents=True, exist_ok=True)
     registry_path = profile_dir / "stores_registry.json"
     login_path = profile_dir / "login_inventory.local.json"
     checklist_path = profile_dir / "login_checklist.md"
+    rules_path = profile_dir / "store_signal_rules.json"
+    verification_plan_path = profile_dir / "verification_plan.json"
 
     registry_path.write_text(
         json.dumps(store_payload, ensure_ascii=False, indent=2) + "\n",
@@ -46,11 +50,21 @@ def import_account_sheet(xlsx_path: Path, profile_dir: Path) -> dict[str, Path]:
         encoding="utf-8",
     )
     checklist_path.write_text(checklist_text, encoding="utf-8")
+    rules_path.write_text(
+        json.dumps(signal_rules_payload, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    verification_plan_path.write_text(
+        json.dumps(verification_plan_payload, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
 
     return {
         "stores_registry": registry_path,
         "login_inventory": login_path,
         "login_checklist": checklist_path,
+        "signal_rules": rules_path,
+        "verification_plan": verification_plan_path,
     }
 
 
@@ -158,6 +172,96 @@ def build_login_checklist(records: list[PlatformAccountRecord]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def build_signal_rules_payload(store_id: str, primary: PlatformAccountRecord) -> dict[str, object]:
+    base_keywords = extract_store_keywords(primary.store_name)
+    common_excludes = ["加盟", "招商", "培训", "招聘", "代运营", "无关品牌"]
+
+    return {
+        "stores": [
+            {
+                "store_id": store_id,
+                "store_name": primary.store_name,
+                "platform": "douyin",
+                "include_keywords": base_keywords,
+                "required_all_keywords": [],
+                "exclude_keywords": common_excludes,
+                "author_include_keywords": [],
+                "author_exclude_keywords": [],
+                "required_any_fields": ["title", "content", "poi_name"],
+                "min_score": 6,
+            },
+            {
+                "store_id": store_id,
+                "store_name": primary.store_name,
+                "platform": "xiaohongshu",
+                "include_keywords": base_keywords,
+                "required_all_keywords": [],
+                "exclude_keywords": common_excludes,
+                "author_include_keywords": [],
+                "author_exclude_keywords": [],
+                "required_any_fields": ["title", "content", "poi_name"],
+                "min_score": 6,
+            },
+            {
+                "store_id": store_id,
+                "store_name": primary.store_name,
+                "platform": "shipinhao",
+                "include_keywords": base_keywords,
+                "required_all_keywords": [],
+                "exclude_keywords": common_excludes,
+                "author_include_keywords": [],
+                "author_exclude_keywords": [],
+                "required_any_fields": ["title", "content", "poi_name"],
+                "min_score": 6,
+            },
+        ]
+    }
+
+
+def build_verification_plan_payload(records: list[PlatformAccountRecord]) -> dict[str, object]:
+    priority = {
+        "douyin": 1,
+        "dianping": 2,
+        "meituan": 3,
+        "eleme": 4,
+        "jdwm": 5,
+        "amap": 6,
+    }
+
+    items: list[dict[str, object]] = []
+    for item in records:
+        items.append(
+            {
+                "platform_key": item.platform_key,
+                "platform_label": item.platform_label,
+                "priority": priority.get(item.platform_key, 99),
+                "verification_required": needs_verification(item),
+                "login_method": item.login_method,
+                "second_factor": item.second_factor,
+                "store_link": item.store_link,
+            }
+        )
+
+    items.sort(key=lambda row: (row["priority"], row["platform_key"]))
+    return {
+        "steps": items,
+    }
+
+
+def next_verification_target(profile_dir: Path) -> dict[str, object] | None:
+    path = profile_dir / "verification_plan.json"
+    if not path.exists():
+        return None
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    steps = payload.get("steps", [])
+    if not isinstance(steps, list):
+        return None
+    for step in steps:
+        if isinstance(step, dict) and step.get("verification_required"):
+            return step
+    return None
+
+
 def normalize_platform(label: str) -> str:
     text = "".join(str(label).strip().lower().split())
     mapping = {
@@ -198,6 +302,26 @@ def build_account_alias(record: PlatformAccountRecord) -> str:
 def needs_verification(record: PlatformAccountRecord) -> bool:
     combined = f"{record.login_method} {record.second_factor}".strip()
     return any(token in combined for token in ("验证", "验证码", "二次", "外地登录", "扫码"))
+
+
+def extract_store_keywords(store_name: str) -> list[str]:
+    cleaned = str(store_name).strip()
+    if not cleaned:
+        return []
+    parts = re.split(r"[·+\-]", cleaned)
+    keywords: list[str] = [cleaned]
+    for part in parts:
+        part = part.strip()
+        if len(part) >= 2 and part not in keywords:
+            keywords.append(part)
+
+    bracket_values = re.findall(r"\(([^)]+)\)", cleaned)
+    for item in bracket_values:
+        item = item.strip()
+        if item and item not in keywords:
+            keywords.append(item)
+
+    return keywords
 
 
 def slugify(text: str) -> str:

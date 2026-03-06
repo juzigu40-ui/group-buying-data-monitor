@@ -175,7 +175,15 @@ gbm import-account-sheet \
 - 会生成 `stores_registry.json`
 - 会生成本地使用的 `login_inventory.local.json`
 - 会生成 `login_checklist.md`
+- 会生成 `store_signal_rules.json`
+- 会生成 `verification_plan.json`
 - 真实账号密码只写入本地 profile 目录，不进入仓库
+
+### 看下一次该找客户配合哪个验证码
+
+```bash
+gbm next-verification --profile-dir data/client_profiles/shibaojie
+```
 
 ### 按单店 profile 直接跑一遍
 
