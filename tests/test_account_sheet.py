@@ -4,6 +4,7 @@ import unittest
 
 from gb_monitor.account_sheet import (
     PlatformAccountRecord,
+    build_client_verification_message,
     build_account_alias,
     build_login_checklist,
     build_signal_rules_payload,
@@ -15,6 +16,7 @@ from gb_monitor.account_sheet import (
     needs_verification,
     next_verification_target,
     normalize_platform,
+    update_verification_status,
 )
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -149,6 +151,83 @@ class AccountSheetTests(unittest.TestCase):
             self.assertIsNotNone(step)
             assert step is not None
             self.assertEqual(step["platform_key"], "douyin")
+
+    def test_update_verification_status_advances_queue(self) -> None:
+        records = [
+            PlatformAccountRecord(
+                platform_label="抖音",
+                platform_key="douyin",
+                store_name="店",
+                city="北京",
+                store_link="",
+                account="dy",
+                password="secret",
+                login_method="验证码登录",
+                second_factor="无",
+            ),
+            PlatformAccountRecord(
+                platform_label="大众点评",
+                platform_key="dianping",
+                store_name="店",
+                city="北京",
+                store_link="",
+                account="dp",
+                password="secret",
+                login_method="验证码登录",
+                second_factor="首次外地登录需要二次验证",
+            ),
+        ]
+        plan = build_verification_plan_payload(records)
+        with TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "verification_plan.json"
+            path.write_text(json.dumps(plan, ensure_ascii=False), encoding="utf-8")
+            update_verification_status(Path(tmpdir), "douyin", "completed")
+            step = next_verification_target(Path(tmpdir))
+            self.assertIsNotNone(step)
+            assert step is not None
+            self.assertEqual(step["platform_key"], "dianping")
+
+    def test_build_client_verification_message_uses_current_step(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            (tmp / "login_inventory.local.json").write_text(
+                json.dumps(
+                    {
+                        "store_name": "凤状元·江西小炒·非遗米粉(食宝街店)",
+                        "platforms": {
+                            "douyin": {
+                                "account": "13311549056",
+                            }
+                        },
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            (tmp / "verification_plan.json").write_text(
+                json.dumps(
+                    {
+                        "steps": [
+                            {
+                                "platform_key": "douyin",
+                                "platform_label": "抖音",
+                                "priority": 1,
+                                "status": "pending",
+                                "verification_required": True,
+                                "login_method": "验证码登录",
+                                "second_factor": "无",
+                                "store_link": "",
+                            }
+                        ]
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            message = build_client_verification_message(tmp)
+            self.assertIn("抖音", message)
+            self.assertIn("13311549056", message)
+            self.assertIn("验证码", message)
 
 
 if __name__ == "__main__":

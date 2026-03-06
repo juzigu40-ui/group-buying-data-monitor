@@ -185,6 +185,21 @@ gbm import-account-sheet \
 gbm next-verification --profile-dir data/client_profiles/shibaojie
 ```
 
+如果要直接生成发给客户的话术：
+
+```bash
+gbm next-verification --profile-dir data/client_profiles/shibaojie --message
+```
+
+如果某个平台已经配合过了，可以把状态往后推进：
+
+```bash
+gbm mark-verification \
+  --profile-dir data/client_profiles/shibaojie \
+  --platform douyin \
+  --status completed
+```
+
 ### 按单店 profile 直接跑一遍
 
 ```bash

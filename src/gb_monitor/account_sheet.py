@@ -235,6 +235,7 @@ def build_verification_plan_payload(records: list[PlatformAccountRecord]) -> dic
                 "platform_key": item.platform_key,
                 "platform_label": item.platform_label,
                 "priority": priority.get(item.platform_key, 99),
+                "status": "pending" if needs_verification(item) else "not_required",
                 "verification_required": needs_verification(item),
                 "login_method": item.login_method,
                 "second_factor": item.second_factor,
@@ -257,9 +258,68 @@ def next_verification_target(profile_dir: Path) -> dict[str, object] | None:
     if not isinstance(steps, list):
         return None
     for step in steps:
-        if isinstance(step, dict) and step.get("verification_required"):
+        if (
+            isinstance(step, dict)
+            and step.get("verification_required")
+            and step.get("status", "pending") == "pending"
+        ):
             return step
     return None
+
+
+def update_verification_status(profile_dir: Path, platform_key: str, status: str) -> Path:
+    if status not in {"pending", "ready", "completed", "skipped", "failed", "not_required"}:
+        raise ValueError("unsupported status")
+
+    path = profile_dir / "verification_plan.json"
+    if not path.exists():
+        raise FileNotFoundError(path)
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    steps = payload.get("steps", [])
+    if not isinstance(steps, list):
+        raise ValueError("invalid verification plan")
+
+    updated = False
+    for step in steps:
+        if isinstance(step, dict) and step.get("platform_key") == platform_key:
+            step["status"] = status
+            updated = True
+            break
+    if not updated:
+        raise ValueError(f"platform not found: {platform_key}")
+
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return path
+
+
+def build_client_verification_message(profile_dir: Path) -> str:
+    inventory_path = profile_dir / "login_inventory.local.json"
+    if not inventory_path.exists():
+        raise FileNotFoundError(inventory_path)
+    payload = json.loads(inventory_path.read_text(encoding="utf-8"))
+    step = next_verification_target(profile_dir)
+    if not step:
+        return "当前没有待处理的验证码平台。"
+
+    store_name = str(payload.get("store_name", "")).strip()
+    platform_key = str(step["platform_key"])
+    platforms = payload.get("platforms", {})
+    platform_conf = platforms.get(platform_key, {}) if isinstance(platforms, dict) else {}
+    platform_label = str(step["platform_label"]).strip()
+    account = str(platform_conf.get("account", "")).strip()
+
+    parts = [
+        f"老板，现在要配合一下 {platform_label} 这边的登录。",
+        f"门店是：{store_name}。",
+    ]
+    if account:
+        parts.append(f"账号是：{account}。")
+    parts.append("这次只需要您这边看到验证码时转我一下，或者帮忙点一次验证。")
+    second_factor = str(step.get("second_factor", "")).strip()
+    if second_factor and second_factor not in {"无", ""}:
+        parts.append(f"这边还要注意：{second_factor}。")
+    parts.append("我这边拿到后会马上处理，尽量一次把会话留住，不反复打扰您。")
+    return "".join(parts)
 
 
 def normalize_platform(label: str) -> str:
