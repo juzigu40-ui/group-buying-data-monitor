@@ -187,7 +187,10 @@ def build_login_checklist(records: list[PlatformAccountRecord]) -> str:
 
 def build_signal_rules_payload(store_id: str, primary: PlatformAccountRecord) -> dict[str, object]:
     base_keywords = extract_store_keywords(primary.store_name)
-    common_excludes = ["加盟", "招商", "培训", "招聘", "代运营", "无关品牌"]
+    exact_keywords = build_exact_store_keywords(primary.store_name)
+    context_keywords = build_public_signal_context_keywords(primary.store_name, primary.city)
+    location_keywords = build_store_location_keywords(primary.store_name, primary.city)
+    common_excludes = build_public_signal_noise_keywords(primary.store_name)
 
     return {
         "stores": [
@@ -196,36 +199,45 @@ def build_signal_rules_payload(store_id: str, primary: PlatformAccountRecord) ->
                 "store_name": primary.store_name,
                 "platform": "douyin",
                 "include_keywords": base_keywords,
+                "exact_include_keywords": exact_keywords,
                 "required_all_keywords": [],
+                "required_context_keywords": context_keywords,
+                "required_location_keywords": location_keywords,
                 "exclude_keywords": common_excludes,
                 "author_include_keywords": [],
                 "author_exclude_keywords": [],
                 "required_any_fields": ["title", "content", "poi_name"],
-                "min_score": 6,
+                "min_score": 8,
             },
             {
                 "store_id": store_id,
                 "store_name": primary.store_name,
                 "platform": "xiaohongshu",
                 "include_keywords": base_keywords,
+                "exact_include_keywords": exact_keywords,
                 "required_all_keywords": [],
+                "required_context_keywords": context_keywords,
+                "required_location_keywords": location_keywords,
                 "exclude_keywords": common_excludes,
                 "author_include_keywords": [],
                 "author_exclude_keywords": [],
                 "required_any_fields": ["title", "content", "poi_name"],
-                "min_score": 6,
+                "min_score": 8,
             },
             {
                 "store_id": store_id,
                 "store_name": primary.store_name,
                 "platform": "shipinhao",
                 "include_keywords": base_keywords,
+                "exact_include_keywords": exact_keywords,
                 "required_all_keywords": [],
+                "required_context_keywords": context_keywords,
+                "required_location_keywords": location_keywords,
                 "exclude_keywords": common_excludes,
                 "author_include_keywords": [],
                 "author_exclude_keywords": [],
                 "required_any_fields": ["title", "content", "poi_name"],
-                "min_score": 6,
+                "min_score": 8,
             },
         ]
     }
@@ -637,6 +649,88 @@ def extract_store_keywords(store_name: str) -> list[str]:
             keywords.append(item)
 
     return keywords
+
+
+def build_exact_store_keywords(store_name: str) -> list[str]:
+    keywords = [store_name]
+    normalized = store_name.replace("·", "").replace(" ", "")
+    if normalized and normalized not in keywords:
+        keywords.append(normalized)
+
+    main_name = re.sub(r"\(.*?\)", "", store_name).strip("· ").strip()
+    if main_name and main_name not in keywords:
+        keywords.append(main_name)
+    return keywords
+
+
+def build_public_signal_context_keywords(store_name: str, city: str) -> list[str]:
+    keywords = [
+        "探店",
+        "打卡",
+        "到店",
+        "门店",
+        "店里",
+        "餐厅",
+        "饭店",
+        "美食",
+        "吃饭",
+        "团购",
+        "套餐",
+        "测评",
+        "推荐",
+        city,
+    ]
+    for token in extract_store_keywords(store_name):
+        if any(marker in token for marker in ("小炒", "米粉", "食宝街", "店")):
+            keywords.append(token.replace("(", "").replace(")", ""))
+    return _dedupe_keywords(keywords)
+
+
+def build_store_location_keywords(store_name: str, city: str) -> list[str]:
+    keywords = [city]
+    for token in extract_store_keywords(store_name):
+        if "店" in token or "街" in token:
+            keywords.append(token.replace("(", "").replace(")", ""))
+    return _dedupe_keywords(keywords)
+
+
+def build_public_signal_noise_keywords(store_name: str) -> list[str]:
+    keywords = [
+        "加盟",
+        "招商",
+        "培训",
+        "招聘",
+        "代运营",
+        "无关品牌",
+        "戏曲",
+        "京剧",
+        "琼剧",
+        "状元媒",
+        "状元探花郎",
+        "青年戏",
+        "戏院",
+        "剧团",
+        "录制",
+        "民俗",
+        "妈祖",
+        "营老爷",
+        "大年初五",
+    ]
+    if "凤状元" in store_name:
+        keywords.extend(["状元媒", "凤状元最新内容", "谁说戏曲不抖音"])
+    return _dedupe_keywords(keywords)
+
+
+def _dedupe_keywords(keywords: list[str]) -> list[str]:
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for item in keywords:
+        text = str(item).strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        ordered.append(text)
+    return ordered
 
 
 def slugify(text: str) -> str:

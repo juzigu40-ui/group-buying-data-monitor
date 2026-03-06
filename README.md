@@ -55,6 +55,9 @@ flowchart LR
 - 门店规则文件：`examples/store_signal_rules.template.json`
 - 规则能力：
   - 包含词
+  - 门店强锚点词
+  - 餐饮/探店上下文强约束
+  - 城市/门店位置强约束
   - 排除词
   - 必须同时命中的强约束词
   - 必须命中的字段
@@ -66,6 +69,7 @@ flowchart LR
   - 重复推送抑制（按门店 + 内容去重）
 - 内容输入流示例：`examples/douyin_signal_candidates.json`
 - 命令行精筛：`gbm score-signals --input <path>`
+- Markdown 舆情看板：`gbm signal-board --input <path>`
 
 ## 当前版本边界
 
@@ -243,6 +247,18 @@ gbm latest-metrics \
 ```bash
 gbm score-signals --input examples/douyin_signal_candidates.json
 ```
+
+### 生成门店实时舆情看板
+
+```bash
+gbm signal-board \
+  --input examples/douyin_signal_candidates.json \
+  --output output/signal_watchboard.md
+```
+
+说明：
+- 会生成一个适合直接转给客户或贴进飞书/文档的 Markdown 看板
+- 看板会展示平台分布、命中明细、热度和规则说明
 
 如果需要把高置信结果直接推到飞书：
 

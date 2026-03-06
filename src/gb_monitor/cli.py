@@ -18,6 +18,7 @@ from gb_monitor.feishu import FeishuNotifier, build_manual_report
 from gb_monitor.logging import configure_logging
 from gb_monitor.service import MonitorService, build_default_collectors
 from gb_monitor.signal_rules import (
+    build_signal_dashboard,
     build_signal_report,
     load_signal_candidates,
     load_signal_rules,
@@ -147,6 +148,23 @@ def build_parser() -> argparse.ArgumentParser:
         "--mark-dispatched",
         action="store_true",
         help="Record current matched results into dispatch history even without webhook notify",
+    )
+
+    signal_board = sub.add_parser(
+        "signal-board",
+        help="Render a markdown watchboard for matched public sentiment content",
+    )
+    signal_board.add_argument("--input", required=True, help="Path to content items JSON")
+    signal_board.add_argument(
+        "--rules",
+        default="",
+        help="Path to signal rules JSON (default: GBM_SIGNAL_RULES)",
+    )
+    signal_board.add_argument("--min-score", type=int, default=0)
+    signal_board.add_argument(
+        "--output",
+        default="",
+        help="Optional output markdown path; if omitted, print to stdout",
     )
 
     return parser
@@ -329,6 +347,26 @@ def main() -> int:
 
             if delivered:
                 storage.record_signal_dispatches(dispatched_at=now, matches=matches)
+        return 0
+
+    if args.command == "signal-board":
+        rules_path = settings.signal_rules_path if not args.rules else Path(args.rules)
+        rules = load_signal_rules(rules_path)
+        candidates = load_signal_candidates(Path(args.input))
+        now = datetime.now(settings.timezone)
+        matches = match_candidates(
+            rules=rules,
+            candidates=candidates,
+            min_score_override=(args.min_score if args.min_score > 0 else None),
+            allow_ambiguous=False,
+        )
+        board = build_signal_dashboard(now, matches)
+        if args.output:
+            path = Path(args.output)
+            path.write_text(board + "\n", encoding="utf-8")
+            print(f"written={path}")
+            return 0
+        print(board)
         return 0
 
     parser.print_help()

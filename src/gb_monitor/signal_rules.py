@@ -25,8 +25,11 @@ def load_signal_rules(path: Path) -> list[SignalRule]:
         store_name = str(item.get("store_name", "")).strip()
         platform = str(item.get("platform", "")).strip().lower()
         include_keywords = _ensure_str_list(item.get("include_keywords"))
+        exact_include_keywords = _ensure_str_list(item.get("exact_include_keywords"))
         exclude_keywords = _ensure_str_list(item.get("exclude_keywords"))
         required_all_keywords = _ensure_str_list(item.get("required_all_keywords"))
+        required_context_keywords = _ensure_str_list(item.get("required_context_keywords"))
+        required_location_keywords = _ensure_str_list(item.get("required_location_keywords"))
         required_any_fields = _ensure_str_list(item.get("required_any_fields")) or [
             "title",
             "content",
@@ -45,8 +48,11 @@ def load_signal_rules(path: Path) -> list[SignalRule]:
                 store_name=store_name,
                 platform=platform,
                 include_keywords=include_keywords,
+                exact_include_keywords=exact_include_keywords,
                 exclude_keywords=exclude_keywords,
                 required_all_keywords=required_all_keywords,
+                required_context_keywords=required_context_keywords,
+                required_location_keywords=required_location_keywords,
                 required_any_fields=required_any_fields,
                 author_include_keywords=author_include_keywords,
                 author_exclude_keywords=author_exclude_keywords,
@@ -145,6 +151,56 @@ def build_signal_report(now: datetime, matches: list[SignalMatch]) -> str:
     return "\n".join(lines)
 
 
+def build_signal_dashboard(now: datetime, matches: list[SignalMatch]) -> str:
+    lines = [f"# 门店实时舆情看板", "", f"- 生成时间：{now:%Y-%m-%d %H:%M:%S}"]
+    if not matches:
+        lines.extend(["- 命中结果：0", "", "当前没有高置信内容。"])
+        return "\n".join(lines)
+
+    confidence_counts: dict[str, int] = {}
+    platform_counts: dict[str, int] = {}
+    for item in matches:
+        confidence_counts[item.confidence] = confidence_counts.get(item.confidence, 0) + 1
+        platform_counts[item.platform] = platform_counts.get(item.platform, 0) + 1
+
+    lines.extend(
+        [
+            f"- 命中总数：{len(matches)}",
+            f"- 高置信：{confidence_counts.get('高置信', 0)}",
+            f"- 中高置信：{confidence_counts.get('中高置信', 0)}",
+            f"- 基础命中：{confidence_counts.get('基础命中', 0)}",
+            "",
+            "## 平台分布",
+            "",
+            "| 平台 | 命中数 |",
+            "| --- | ---: |",
+        ]
+    )
+    for platform, count in sorted(platform_counts.items()):
+        lines.append(f"| {platform} | {count} |")
+
+    lines.extend(
+        [
+            "",
+            "## 命中明细",
+            "",
+            "| 平台 | 置信 | 分数 | 标题 | 作者 | 时间 | 热度 | 规则说明 |",
+            "| --- | --- | ---: | --- | --- | --- | --- | --- |",
+        ]
+    )
+    for item in matches:
+        heat = item.like_count + item.comment_count * 2 + item.share_count * 3
+        title = _markdown_cell(item.title or item.url or item.content_id)
+        author = _markdown_cell(item.author_name or "-")
+        published_at = _markdown_cell(item.published_at or "-")
+        reason = _markdown_cell(item.reason)
+        lines.append(
+            f"| {item.platform} | {item.confidence} | {item.score} | {title} | {author} | {published_at} | {heat} | {reason} |"
+        )
+
+    return "\n".join(lines)
+
+
 def matches_to_json(matches: list[SignalMatch]) -> list[dict[str, object]]:
     return [asdict(item) for item in matches]
 
@@ -174,9 +230,10 @@ def _match_single(
     if rule.author_include_keywords and not author_include_hits:
         return None
 
+    exact_hits = _find_hits(rule.exact_include_keywords, field_values)
     core_terms = [rule.store_name, *rule.include_keywords]
     required_hits = _find_hits(core_terms, {k: v for k, v in field_values.items() if k in rule.required_any_fields})
-    if not required_hits:
+    if not required_hits and not exact_hits:
         return None
 
     if rule.required_all_keywords:
@@ -186,23 +243,38 @@ def _match_single(
             return None
 
     total_hits = _find_hits(core_terms, field_values)
-    if not total_hits:
+    if not total_hits and not exact_hits:
         return None
 
-    matched_terms = sorted({term for hits in total_hits.values() for term in hits})
+    has_strong_store_hit = bool(
+        exact_hits.get("poi_name")
+        or exact_hits.get("title")
+        or _find_hits([rule.store_name], {"poi_name": candidate.poi_name, "title": candidate.title})
+    )
+
+    context_hits = _find_hits(rule.required_context_keywords, field_values)
+    if rule.required_context_keywords and not has_strong_store_hit and not context_hits:
+        return None
+
+    location_hits = _find_hits(rule.required_location_keywords, field_values)
+    if rule.required_location_keywords and not has_strong_store_hit and not location_hits:
+        return None
+
+    combined_hits = _merge_hits(total_hits, exact_hits, context_hits, location_hits)
+    matched_terms = sorted({term for hits in combined_hits.values() for term in hits})
     matched_terms.extend(
         sorted({term for hits in author_include_hits.values() for term in hits if term not in matched_terms})
     )
-    matched_fields = sorted(total_hits)
+    matched_fields = sorted(combined_hits)
     if author_include_hits and "author_name" not in matched_fields:
         matched_fields.append("author_name")
-    score = _score_match(rule, candidate, total_hits, author_include_hits)
+    score = _score_match(rule, candidate, total_hits, exact_hits, context_hits, location_hits, author_include_hits)
     min_score = min_score_override if min_score_override is not None else rule.min_score
     if score < min_score:
         return None
 
     confidence = _confidence_for_score(score)
-    reason = _build_reason(rule, candidate, total_hits, author_include_hits, score)
+    reason = _build_reason(rule, candidate, total_hits, exact_hits, context_hits, location_hits, author_include_hits, score)
     return SignalMatch(
         store_id=rule.store_id,
         store_name=rule.store_name,
@@ -228,19 +300,32 @@ def _score_match(
     rule: SignalRule,
     candidate: SignalCandidate,
     hits: dict[str, list[str]],
+    exact_hits: dict[str, list[str]],
+    context_hits: dict[str, list[str]],
+    location_hits: dict[str, list[str]],
     author_include_hits: dict[str, list[str]],
 ) -> int:
     score = 0
     unique_terms = {term for values in hits.values() for term in values}
     score += len(unique_terms) * 2
+    exact_terms = {term for values in exact_hits.values() for term in values}
+    score += len(exact_terms) * 2
     if rule.store_name in hits.get("poi_name", []):
         score += 4
     if rule.store_name in hits.get("title", []):
+        score += 3
+    if exact_hits.get("poi_name"):
+        score += 4
+    if exact_hits.get("title"):
         score += 3
     if "content" in hits:
         score += 1
     if len(hits) >= 2:
         score += 1
+    if context_hits:
+        score += min(3, len({term for values in context_hits.values() for term in values}))
+    if location_hits:
+        score += min(2, len({term for values in location_hits.values() for term in values}))
     if author_include_hits:
         score += 2
     score += _engagement_bonus(candidate)
@@ -252,6 +337,9 @@ def _build_reason(
     rule: SignalRule,
     candidate: SignalCandidate,
     hits: dict[str, list[str]],
+    exact_hits: dict[str, list[str]],
+    context_hits: dict[str, list[str]],
+    location_hits: dict[str, list[str]],
     author_include_hits: dict[str, list[str]],
     score: int,
 ) -> str:
@@ -260,8 +348,14 @@ def _build_reason(
         fragments.append("POI 命中门店名")
     if rule.store_name in hits.get("title", []):
         fragments.append("标题直接提到门店")
+    if exact_hits:
+        fragments.append("命中门店强锚点")
     if any(term in hits.get("content", []) for term in rule.include_keywords):
         fragments.append("正文命中门店规则词")
+    if context_hits:
+        fragments.append("命中餐饮/探店上下文")
+    if location_hits:
+        fragments.append("命中门店位置上下文")
     if len(hits) >= 2:
         fragments.append("多字段同时命中")
     if author_include_hits:
@@ -293,6 +387,17 @@ def _find_hits(terms: list[str], field_values: dict[str, str]) -> dict[str, list
         if field_hits:
             hits[field] = field_hits
     return hits
+
+
+def _merge_hits(*groups: dict[str, list[str]]) -> dict[str, list[str]]:
+    merged: dict[str, list[str]] = {}
+    for group in groups:
+        for field, terms in group.items():
+            bucket = merged.setdefault(field, [])
+            for term in terms:
+                if term not in bucket:
+                    bucket.append(term)
+    return merged
 
 
 def _collapse_ambiguous_matches(matches: list[SignalMatch], allow_ambiguous: bool) -> list[SignalMatch]:
@@ -375,6 +480,11 @@ def _confidence_for_score(score: int) -> str:
     if score >= 8:
         return "中高置信"
     return "基础命中"
+
+
+def _markdown_cell(value: str) -> str:
+    text = str(value).replace("\n", " ").replace("|", "\\|").strip()
+    return text or "-"
 
 
 def _ensure_str_list(value: object) -> list[str]:

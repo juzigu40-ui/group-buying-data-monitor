@@ -10,8 +10,22 @@
         "静安寺烤鱼",
         "双人烤鱼套餐"
       ],
+      "exact_include_keywords": [
+        "杨记烤鱼(静安店)",
+        "杨记烤鱼静安店"
+      ],
       "required_all_keywords": [
         "静安"
+      ],
+      "required_context_keywords": [
+        "探店",
+        "烤鱼",
+        "套餐",
+        "门店"
+      ],
+      "required_location_keywords": [
+        "静安",
+        "静安寺"
       ],
       "exclude_keywords": [
         "浦东店",

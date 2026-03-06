@@ -121,6 +121,11 @@ class AccountSheetTests(unittest.TestCase):
         payload = build_signal_rules_payload("bj-store-001", primary)
         platforms = [item["platform"] for item in payload["stores"]]
         self.assertEqual(platforms, ["douyin", "xiaohongshu", "shipinhao"])
+        first = payload["stores"][0]
+        self.assertIn("exact_include_keywords", first)
+        self.assertIn("required_context_keywords", first)
+        self.assertIn("required_location_keywords", first)
+        self.assertGreaterEqual(first["min_score"], 8)
 
     def test_next_verification_target_returns_highest_priority_step(self) -> None:
         records = [

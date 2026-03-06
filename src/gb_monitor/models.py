@@ -47,8 +47,11 @@ class SignalRule:
     store_name: str
     platform: str
     include_keywords: list[str]
+    exact_include_keywords: list[str]
     exclude_keywords: list[str]
     required_all_keywords: list[str]
+    required_context_keywords: list[str]
+    required_location_keywords: list[str]
     required_any_fields: list[str]
     author_include_keywords: list[str]
     author_exclude_keywords: list[str]
