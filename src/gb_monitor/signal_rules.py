@@ -5,7 +5,7 @@ from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
 
-from gb_monitor.models import SignalCandidate, SignalMatch, SignalRule
+from gb_monitor.models import SignalCandidate, SignalMatch, SignalRejection, SignalRule
 
 AMBIGUOUS_MARGIN = 2
 
@@ -105,22 +105,63 @@ def match_candidates(
     min_score_override: int | None = None,
     allow_ambiguous: bool = False,
 ) -> list[SignalMatch]:
+    matches, _ = review_candidates(
+        rules=rules,
+        candidates=candidates,
+        min_score_override=min_score_override,
+        allow_ambiguous=allow_ambiguous,
+    )
+    return matches
+
+
+def review_candidates(
+    rules: list[SignalRule],
+    candidates: list[SignalCandidate],
+    min_score_override: int | None = None,
+    allow_ambiguous: bool = False,
+) -> tuple[list[SignalMatch], list[SignalRejection]]:
     matches_by_key: dict[tuple[str, str], SignalMatch] = {}
+    candidate_rejections: dict[str, SignalRejection] = {}
     for candidate in candidates:
+        platform_rules = [rule for rule in rules if candidate.platform == rule.platform]
+        if not platform_rules:
+            continue
+
         for rule in rules:
             if candidate.platform != rule.platform:
                 continue
-            match = _match_single(rule, candidate, min_score_override)
+            match, rejection_reason = _evaluate_single(rule, candidate, min_score_override)
             if match is None:
+                if rejection_reason and candidate.content_id not in candidate_rejections:
+                    candidate_rejections[candidate.content_id] = _build_rejection(rule, candidate, rejection_reason)
                 continue
             key = (rule.store_id, candidate.content_id)
             previous = matches_by_key.get(key)
             if previous is None or match.score > previous.score:
                 matches_by_key[key] = match
 
-    matches = _collapse_ambiguous_matches(list(matches_by_key.values()), allow_ambiguous=allow_ambiguous)
+    matches, ambiguous_rejections = _collapse_ambiguous_matches(
+        list(matches_by_key.values()),
+        candidates=candidates,
+        allow_ambiguous=allow_ambiguous,
+    )
     matches.sort(key=lambda item: (-item.score, item.store_id, item.content_id))
-    return matches
+    for rejection in ambiguous_rejections:
+        candidate_rejections[rejection.content_id] = rejection
+    accepted_ids = {item.content_id for item in matches}
+    rejections = [
+        item
+        for content_id, item in candidate_rejections.items()
+        if content_id not in accepted_ids
+    ]
+    rejections.sort(
+        key=lambda item: (
+            -(item.like_count + item.comment_count * 2 + item.share_count * 3),
+            item.store_id,
+            item.content_id,
+        )
+    )
+    return matches, rejections
 
 
 def build_signal_report(now: datetime, matches: list[SignalMatch]) -> str:
@@ -151,10 +192,24 @@ def build_signal_report(now: datetime, matches: list[SignalMatch]) -> str:
     return "\n".join(lines)
 
 
-def build_signal_dashboard(now: datetime, matches: list[SignalMatch]) -> str:
+def build_signal_dashboard(
+    now: datetime,
+    matches: list[SignalMatch],
+    rejections: list[SignalRejection] | None = None,
+) -> str:
     lines = [f"# 门店实时舆情看板", "", f"- 生成时间：{now:%Y-%m-%d %H:%M:%S}"]
+    rejections = rejections or []
     if not matches:
-        lines.extend(["- 命中结果：0", "", "当前没有高置信内容。"])
+        lines.extend(
+            [
+                "- 命中结果：0",
+                f"- 已过滤噪音：{len(rejections)}",
+                "",
+                "当前没有高置信内容。",
+            ]
+        )
+        if rejections:
+            lines.extend(_build_rejection_section(rejections))
         return "\n".join(lines)
 
     confidence_counts: dict[str, int] = {}
@@ -169,6 +224,7 @@ def build_signal_dashboard(now: datetime, matches: list[SignalMatch]) -> str:
             f"- 高置信：{confidence_counts.get('高置信', 0)}",
             f"- 中高置信：{confidence_counts.get('中高置信', 0)}",
             f"- 基础命中：{confidence_counts.get('基础命中', 0)}",
+            f"- 已过滤噪音：{len(rejections)}",
             "",
             "## 平台分布",
             "",
@@ -198,6 +254,9 @@ def build_signal_dashboard(now: datetime, matches: list[SignalMatch]) -> str:
             f"| {item.platform} | {item.confidence} | {item.score} | {title} | {author} | {published_at} | {heat} | {reason} |"
         )
 
+    if rejections:
+        lines.extend(_build_rejection_section(rejections))
+
     return "\n".join(lines)
 
 
@@ -205,11 +264,11 @@ def matches_to_json(matches: list[SignalMatch]) -> list[dict[str, object]]:
     return [asdict(item) for item in matches]
 
 
-def _match_single(
+def _evaluate_single(
     rule: SignalRule,
     candidate: SignalCandidate,
     min_score_override: int | None,
-) -> SignalMatch | None:
+) -> tuple[SignalMatch | None, str | None]:
     field_values = {
         "title": candidate.title,
         "content": candidate.content,
@@ -219,32 +278,35 @@ def _match_single(
 
     exclude_hits = _find_hits(rule.exclude_keywords, field_values)
     if exclude_hits:
-        return None
+        terms = sorted({term for values in exclude_hits.values() for term in values})
+        return None, f"命中排除词：{', '.join(terms)}"
 
     if rule.author_exclude_keywords:
         author_exclude_hits = _find_hits(rule.author_exclude_keywords, {"author_name": candidate.author_name})
         if author_exclude_hits:
-            return None
+            terms = sorted({term for values in author_exclude_hits.values() for term in values})
+            return None, f"作者命中黑名单：{', '.join(terms)}"
 
     author_include_hits = _find_hits(rule.author_include_keywords, {"author_name": candidate.author_name})
     if rule.author_include_keywords and not author_include_hits:
-        return None
+        return None, "作者未命中白名单"
 
     exact_hits = _find_hits(rule.exact_include_keywords, field_values)
     core_terms = [rule.store_name, *rule.include_keywords]
     required_hits = _find_hits(core_terms, {k: v for k, v in field_values.items() if k in rule.required_any_fields})
     if not required_hits and not exact_hits:
-        return None
+        return None, "未命中门店核心词"
 
     if rule.required_all_keywords:
         required_all_hits = _find_hits(rule.required_all_keywords, field_values)
         required_all_terms = {term for values in required_all_hits.values() for term in values}
-        if any(term not in required_all_terms for term in rule.required_all_keywords):
-            return None
+        missing_terms = [term for term in rule.required_all_keywords if term not in required_all_terms]
+        if missing_terms:
+            return None, f"缺少必备词：{', '.join(missing_terms)}"
 
     total_hits = _find_hits(core_terms, field_values)
     if not total_hits and not exact_hits:
-        return None
+        return None, "未命中门店规则词"
 
     has_strong_store_hit = bool(
         exact_hits.get("poi_name")
@@ -254,11 +316,11 @@ def _match_single(
 
     context_hits = _find_hits(rule.required_context_keywords, field_values)
     if rule.required_context_keywords and not has_strong_store_hit and not context_hits:
-        return None
+        return None, "缺少餐饮/探店上下文"
 
     location_hits = _find_hits(rule.required_location_keywords, field_values)
     if rule.required_location_keywords and not has_strong_store_hit and not location_hits:
-        return None
+        return None, "缺少门店位置上下文"
 
     combined_hits = _merge_hits(total_hits, exact_hits, context_hits, location_hits)
     matched_terms = sorted({term for hits in combined_hits.values() for term in hits})
@@ -271,7 +333,7 @@ def _match_single(
     score = _score_match(rule, candidate, total_hits, exact_hits, context_hits, location_hits, author_include_hits)
     min_score = min_score_override if min_score_override is not None else rule.min_score
     if score < min_score:
-        return None
+        return None, f"综合分过低：{score} < {min_score}"
 
     confidence = _confidence_for_score(score)
     reason = _build_reason(rule, candidate, total_hits, exact_hits, context_hits, location_hits, author_include_hits, score)
@@ -293,7 +355,7 @@ def _match_single(
         matched_fields=matched_fields,
         reason=reason,
         raw_payload=candidate.raw_payload,
-    )
+    ), None
 
 
 def _score_match(
@@ -400,15 +462,21 @@ def _merge_hits(*groups: dict[str, list[str]]) -> dict[str, list[str]]:
     return merged
 
 
-def _collapse_ambiguous_matches(matches: list[SignalMatch], allow_ambiguous: bool) -> list[SignalMatch]:
+def _collapse_ambiguous_matches(
+    matches: list[SignalMatch],
+    candidates: list[SignalCandidate],
+    allow_ambiguous: bool,
+) -> tuple[list[SignalMatch], list[SignalRejection]]:
     if allow_ambiguous:
-        return matches
+        return matches, []
 
     grouped: dict[tuple[str, str], list[SignalMatch]] = {}
     for match in matches:
         grouped.setdefault((match.platform, match.content_id), []).append(match)
 
     resolved: list[SignalMatch] = []
+    ambiguous_rejections: list[SignalRejection] = []
+    candidate_index = {item.content_id: item for item in candidates}
     for items in grouped.values():
         items.sort(key=lambda item: (-item.score, item.store_id))
         best = items[0]
@@ -418,10 +486,68 @@ def _collapse_ambiguous_matches(matches: list[SignalMatch], allow_ambiguous: boo
 
         second = items[1]
         if second.score >= best.score - AMBIGUOUS_MARGIN:
+            candidate = candidate_index.get(best.content_id)
+            if candidate is not None:
+                store_names = " / ".join(item.store_name for item in items[:2])
+                ambiguous_rejections.append(
+                    SignalRejection(
+                        store_id=best.store_id,
+                        store_name=best.store_name,
+                        platform=best.platform,
+                        content_id=best.content_id,
+                        url=best.url,
+                        title=best.title,
+                        author_name=best.author_name,
+                        published_at=best.published_at,
+                        like_count=best.like_count,
+                        comment_count=best.comment_count,
+                        share_count=best.share_count,
+                        reason=f"门店歧义冲突：{store_names}",
+                        raw_payload=candidate.raw_payload,
+                    )
+                )
             continue
         resolved.append(best)
 
-    return resolved
+    return resolved, ambiguous_rejections
+
+
+def _build_rejection(rule: SignalRule, candidate: SignalCandidate, reason: str) -> SignalRejection:
+    return SignalRejection(
+        store_id=rule.store_id,
+        store_name=rule.store_name,
+        platform=candidate.platform,
+        content_id=candidate.content_id,
+        url=candidate.url,
+        title=candidate.title,
+        author_name=candidate.author_name,
+        published_at=candidate.published_at,
+        like_count=candidate.like_count,
+        comment_count=candidate.comment_count,
+        share_count=candidate.share_count,
+        reason=reason,
+        raw_payload=candidate.raw_payload,
+    )
+
+
+def _build_rejection_section(rejections: list[SignalRejection]) -> list[str]:
+    lines = [
+        "",
+        "## 已过滤噪音样例",
+        "",
+        "| 平台 | 标题 | 作者 | 时间 | 热度 | 过滤原因 |",
+        "| --- | --- | --- | --- | ---: | --- |",
+    ]
+    for item in rejections[:8]:
+        heat = item.like_count + item.comment_count * 2 + item.share_count * 3
+        title = _markdown_cell(item.title or item.url or item.content_id)
+        author = _markdown_cell(item.author_name or "-")
+        published_at = _markdown_cell(item.published_at or "-")
+        reason = _markdown_cell(item.reason)
+        lines.append(
+            f"| {item.platform} | {title} | {author} | {published_at} | {heat} | {reason} |"
+        )
+    return lines
 
 
 def _engagement_bonus(candidate: SignalCandidate) -> int:

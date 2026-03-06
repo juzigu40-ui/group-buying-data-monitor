@@ -93,3 +93,20 @@ class SignalMatch:
     matched_fields: list[str]
     reason: str
     raw_payload: dict[str, Any]
+
+
+@dataclass(slots=True)
+class SignalRejection:
+    store_id: str
+    store_name: str
+    platform: str
+    content_id: str
+    url: str
+    title: str
+    author_name: str
+    published_at: str | None
+    like_count: int
+    comment_count: int
+    share_count: int
+    reason: str
+    raw_payload: dict[str, Any]

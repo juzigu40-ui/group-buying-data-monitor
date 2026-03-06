@@ -70,6 +70,7 @@ flowchart LR
 - 内容输入流示例：`examples/douyin_signal_candidates.json`
 - 命令行精筛：`gbm score-signals --input <path>`
 - Markdown 舆情看板：`gbm signal-board --input <path>`
+  - 看板会同时展示“命中结果”和“已过滤噪音样例”，方便直接解释为什么某些内容被压掉
 
 ## 当前版本边界
 
@@ -258,7 +259,7 @@ gbm signal-board \
 
 说明：
 - 会生成一个适合直接转给客户或贴进飞书/文档的 Markdown 看板
-- 看板会展示平台分布、命中明细、热度和规则说明
+- 看板会展示平台分布、命中明细、热度、规则说明，以及被过滤掉的噪音样例
 
 如果需要把高置信结果直接推到飞书：
 

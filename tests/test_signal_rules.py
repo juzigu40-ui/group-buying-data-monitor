@@ -12,6 +12,7 @@ from gb_monitor.signal_rules import (
     load_signal_candidates,
     load_signal_rules,
     match_candidates,
+    review_candidates,
 )
 from gb_monitor.storage import Storage
 
@@ -49,12 +50,13 @@ class SignalRuleTests(unittest.TestCase):
     def test_build_signal_dashboard_prints_table(self) -> None:
         rules = load_signal_rules(Path("examples/store_signal_rules.template.json"))
         candidates = load_signal_candidates(Path("examples/douyin_signal_candidates.json"))
-        matches = match_candidates(rules, candidates)
+        matches, rejections = review_candidates(rules, candidates)
 
-        board = build_signal_dashboard(datetime.now(), matches)
+        board = build_signal_dashboard(datetime.now(), matches, rejections)
         self.assertIn("# 门店实时舆情看板", board)
         self.assertIn("## 平台分布", board)
         self.assertIn("| 平台 | 置信 | 分数 |", board)
+        self.assertIn("## 已过滤噪音样例", board)
 
     def test_match_candidates_suppresses_ambiguous_store_hits(self) -> None:
         rules = [
@@ -212,6 +214,46 @@ class SignalRuleTests(unittest.TestCase):
 
         matches = match_candidates(rules, candidates)
         self.assertEqual([item.content_id for item in matches], ["keep-1"])
+
+    def test_review_candidates_returns_rejection_reason_for_noise(self) -> None:
+        rules = [
+            SignalRule(
+                store_id="s1",
+                store_name="凤状元·江西小炒·非遗米粉(食宝街店)",
+                platform="douyin",
+                include_keywords=["凤状元", "江西小炒", "食宝街店"],
+                exact_include_keywords=["凤状元·江西小炒·非遗米粉(食宝街店)"],
+                exclude_keywords=["戏曲", "状元媒"],
+                required_all_keywords=[],
+                required_context_keywords=["探店", "米粉", "小炒", "门店"],
+                required_location_keywords=["北京", "食宝街店"],
+                required_any_fields=["title", "content", "poi_name"],
+                author_include_keywords=[],
+                author_exclude_keywords=[],
+                min_score=8,
+            )
+        ]
+        candidates = [
+            SignalCandidate(
+                content_id="noise-1",
+                platform="douyin",
+                title="凤状元最新内容",
+                content="山东省京剧院《状元媒》现场录制",
+                poi_name="",
+                author_name="戏曲账号",
+                url="https://example.com/noise-1",
+                published_at=None,
+                like_count=30,
+                comment_count=1,
+                share_count=0,
+                raw_payload={},
+            ),
+        ]
+
+        matches, rejections = review_candidates(rules, candidates)
+        self.assertEqual(matches, [])
+        self.assertEqual(len(rejections), 1)
+        self.assertIn("命中排除词", rejections[0].reason)
 
     def test_storage_filters_repeated_dispatches(self) -> None:
         rules = load_signal_rules(Path("examples/store_signal_rules.template.json"))

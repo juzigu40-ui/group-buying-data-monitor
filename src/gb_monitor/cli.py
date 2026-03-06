@@ -24,6 +24,7 @@ from gb_monitor.signal_rules import (
     load_signal_rules,
     match_candidates,
     matches_to_json,
+    review_candidates,
 )
 from gb_monitor.store_registry import (
     enabled_store_ids_by_platform,
@@ -354,13 +355,13 @@ def main() -> int:
         rules = load_signal_rules(rules_path)
         candidates = load_signal_candidates(Path(args.input))
         now = datetime.now(settings.timezone)
-        matches = match_candidates(
+        matches, rejections = review_candidates(
             rules=rules,
             candidates=candidates,
             min_score_override=(args.min_score if args.min_score > 0 else None),
             allow_ambiguous=False,
         )
-        board = build_signal_dashboard(now, matches)
+        board = build_signal_dashboard(now, matches, rejections)
         if args.output:
             path = Path(args.output)
             path.write_text(board + "\n", encoding="utf-8")
