@@ -7,6 +7,7 @@ from pathlib import Path
 
 from gb_monitor.account_sheet import (
     build_profile_status,
+    build_profile_execution_board,
     build_client_verification_message,
     import_account_sheet,
     next_verification_target,
@@ -100,6 +101,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Show current execution status for one local client profile",
     )
     profile_status.add_argument("--profile-dir", required=True, help="Local profile directory")
+
+    profile_board = sub.add_parser(
+        "profile-board",
+        help="Show the execution board for one local client profile",
+    )
+    profile_board.add_argument("--profile-dir", required=True, help="Local profile directory")
 
     score = sub.add_parser(
         "score-signals",
@@ -254,6 +261,10 @@ def main() -> int:
 
     if args.command == "profile-status":
         print(build_profile_status(Path(args.profile_dir)))
+        return 0
+
+    if args.command == "profile-board":
+        print(build_profile_execution_board(Path(args.profile_dir)))
         return 0
 
     if args.command == "score-signals":

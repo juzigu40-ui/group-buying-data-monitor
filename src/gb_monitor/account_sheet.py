@@ -33,6 +33,7 @@ def import_account_sheet(xlsx_path: Path, profile_dir: Path) -> dict[str, Path]:
     checklist_text = build_login_checklist(records)
     signal_rules_payload = build_signal_rules_payload(store_id, primary)
     verification_plan_payload = build_verification_plan_payload(records)
+    execution_board_text = build_execution_board(records, verification_plan_payload)
 
     profile_dir.mkdir(parents=True, exist_ok=True)
     registry_path = profile_dir / "stores_registry.json"
@@ -40,6 +41,7 @@ def import_account_sheet(xlsx_path: Path, profile_dir: Path) -> dict[str, Path]:
     checklist_path = profile_dir / "login_checklist.md"
     rules_path = profile_dir / "store_signal_rules.json"
     verification_plan_path = profile_dir / "verification_plan.json"
+    execution_board_path = profile_dir / "execution_board.md"
 
     registry_path.write_text(
         json.dumps(store_payload, ensure_ascii=False, indent=2) + "\n",
@@ -58,6 +60,7 @@ def import_account_sheet(xlsx_path: Path, profile_dir: Path) -> dict[str, Path]:
         json.dumps(verification_plan_payload, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
+    execution_board_path.write_text(execution_board_text, encoding="utf-8")
 
     return {
         "stores_registry": registry_path,
@@ -65,6 +68,7 @@ def import_account_sheet(xlsx_path: Path, profile_dir: Path) -> dict[str, Path]:
         "login_checklist": checklist_path,
         "signal_rules": rules_path,
         "verification_plan": verification_plan_path,
+        "execution_board": execution_board_path,
     }
 
 
@@ -249,6 +253,65 @@ def build_verification_plan_payload(records: list[PlatformAccountRecord]) -> dic
     }
 
 
+def build_execution_board(
+    records: list[PlatformAccountRecord],
+    verification_plan_payload: dict[str, object],
+) -> str:
+    primary = records[0]
+    steps_raw = verification_plan_payload.get("steps", [])
+    steps = steps_raw if isinstance(steps_raw, list) else []
+    step_by_platform = {
+        str(step.get("platform_key")): step
+        for step in steps
+        if isinstance(step, dict)
+    }
+
+    lines = [
+        f"# {primary.store_name} 单店执行面板",
+        "",
+        f"- 城市：{primary.city}",
+        f"- 后台平台数：{len(records)}",
+        "- 当前目标：先把单店链路跑通，再逐个平台进入真实登录与采集。",
+        "",
+        "## 平台执行状态",
+        "",
+        "| 平台 | 账号 | 登录方式 | 当前状态 | 卡点 |",
+        "| --- | --- | --- | --- | --- |",
+    ]
+
+    for item in records:
+        step = step_by_platform.get(item.platform_key, {})
+        status = summarize_platform_status(item, step)
+        blocker = summarize_platform_blocker(item, step)
+        lines.append(
+            "| "
+            f"{item.platform_label} | "
+            f"{mask_account(item.account)} | "
+            f"{item.login_method or '待确认'} | "
+            f"{status} | "
+            f"{blocker} |"
+        )
+
+    lines.extend(
+        [
+            "",
+            "## 公开舆情范围",
+            "",
+            "- 抖音：已按门店关键词生成首版精筛规则。",
+            "- 小红书：已挂入规则位，后面补真实内容源。",
+            "- 视频号：已挂入规则位，后面补真实内容源。",
+            "",
+            "## 当前先做什么",
+            "",
+            "1. 先推进不依赖验证码的本地链路与规则校准。",
+            "2. 真到登录窗口时，再找客户拿当前平台验证码。",
+            "3. 大众点评和美团若触发首次异地二验，再做一次性配合。",
+            "",
+        ]
+    )
+    return "\n".join(lines) + "\n"
+
+
 def next_verification_target(profile_dir: Path) -> dict[str, object] | None:
     path = profile_dir / "verification_plan.json"
     if not path.exists():
@@ -388,6 +451,90 @@ def build_profile_status(profile_dir: Path) -> str:
             lines.append(f"- {item}")
 
     return "\n".join(lines)
+
+
+def build_profile_execution_board(profile_dir: Path) -> str:
+    inventory_path = profile_dir / "login_inventory.local.json"
+    verification_path = profile_dir / "verification_plan.json"
+    if not inventory_path.exists():
+        raise FileNotFoundError(inventory_path)
+    if not verification_path.exists():
+        raise FileNotFoundError(verification_path)
+
+    inventory = json.loads(inventory_path.read_text(encoding="utf-8"))
+    verification = json.loads(verification_path.read_text(encoding="utf-8"))
+    store_name = str(inventory.get("store_name", "")).strip()
+    city = str(inventory.get("city", "")).strip()
+    platforms_raw = inventory.get("platforms", {})
+    if not isinstance(platforms_raw, dict):
+        raise ValueError("invalid login inventory")
+
+    records: list[PlatformAccountRecord] = []
+    for platform_key, conf in platforms_raw.items():
+        if not isinstance(conf, dict):
+            continue
+        records.append(
+            PlatformAccountRecord(
+                platform_label=str(conf.get("platform_label", platform_key)).strip(),
+                platform_key=str(platform_key).strip(),
+                store_name=store_name,
+                city=city,
+                store_link=str(conf.get("store_link", "")).strip(),
+                account=str(conf.get("account", "")).strip(),
+                password="",
+                login_method=str(conf.get("login_method", "")).strip(),
+                second_factor=str(conf.get("second_factor", "")).strip(),
+            )
+        )
+    records.sort(key=lambda item: item.platform_key)
+    if not records:
+        raise ValueError("no platform records found in login inventory")
+    return build_execution_board(records, verification)
+
+
+def summarize_platform_status(
+    record: PlatformAccountRecord,
+    step: dict[str, object] | None,
+) -> str:
+    if step and step.get("status") == "completed":
+        return "已完成验证"
+    if needs_verification(record):
+        return "待验证码"
+    if not str(record.login_method).strip():
+        return "登录方式待确认"
+    return "可先推进"
+
+
+def summarize_platform_blocker(
+    record: PlatformAccountRecord,
+    step: dict[str, object] | None,
+) -> str:
+    blockers: list[str] = []
+    if not str(record.store_link).strip() or str(record.store_link).strip() == "无":
+        blockers.append("店铺链接待补")
+    if not str(record.login_method).strip():
+        blockers.append("登录方式待确认")
+    second_factor = str(record.second_factor).strip()
+    if second_factor and second_factor not in {"无", ""}:
+        blockers.append(second_factor)
+    if step and step.get("status") == "failed":
+        blockers.append("上次验证失败")
+    if not blockers:
+        return "无"
+    return "；".join(blockers)
+
+
+def mask_account(account: str) -> str:
+    text = str(account).strip()
+    if not text:
+        return "-"
+    if len(text) <= 4:
+        return text
+    if text.isdigit() and len(text) >= 7:
+        return f"{text[:3]}****{text[-4:]}"
+    if len(text) <= 8:
+        return text[:2] + "***"
+    return text[:2] + "***" + text[-2:]
 
 
 def normalize_platform(label: str) -> str:

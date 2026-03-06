@@ -5,6 +5,8 @@ import unittest
 from gb_monitor.account_sheet import (
     PlatformAccountRecord,
     build_client_verification_message,
+    build_execution_board,
+    build_profile_execution_board,
     build_profile_status,
     build_account_alias,
     build_login_checklist,
@@ -289,6 +291,100 @@ class AccountSheetTests(unittest.TestCase):
             self.assertIn("可直接推进: 1", text)
             self.assertIn("当前优先级: 抖音(douyin)", text)
             self.assertIn("高德 登录方式待确认", text)
+
+    def test_build_execution_board_masks_account_and_lists_blockers(self) -> None:
+        records = [
+            PlatformAccountRecord(
+                platform_label="抖音",
+                platform_key="douyin",
+                store_name="凤状元·江西小炒·非遗米粉(食宝街店)",
+                city="北京",
+                store_link="https://example.com/dy",
+                account="13311549056",
+                password="secret",
+                login_method="验证码登录",
+                second_factor="无",
+            ),
+            PlatformAccountRecord(
+                platform_label="高德",
+                platform_key="amap",
+                store_name="凤状元·江西小炒·非遗米粉(食宝街店)",
+                city="北京",
+                store_link="",
+                account="13311549056",
+                password="",
+                login_method="",
+                second_factor="",
+            ),
+        ]
+        board = build_execution_board(
+            records,
+            {
+                "steps": [
+                    {
+                        "platform_key": "douyin",
+                        "platform_label": "抖音",
+                        "status": "pending",
+                    },
+                    {
+                        "platform_key": "amap",
+                        "platform_label": "高德",
+                        "status": "not_required",
+                    },
+                ]
+            },
+        )
+        self.assertIn("133****9056", board)
+        self.assertIn("待验证码", board)
+        self.assertIn("登录方式待确认", board)
+        self.assertIn("店铺链接待补", board)
+
+    def test_build_profile_execution_board_reads_local_profile(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            (tmp / "login_inventory.local.json").write_text(
+                json.dumps(
+                    {
+                        "store_name": "凤状元·江西小炒·非遗米粉(食宝街店)",
+                        "city": "北京",
+                        "platforms": {
+                            "douyin": {
+                                "platform_label": "抖音",
+                                "account": "13311549056",
+                                "login_method": "验证码登录",
+                                "second_factor": "无",
+                                "store_link": "https://example.com/dy",
+                            }
+                        },
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            (tmp / "verification_plan.json").write_text(
+                json.dumps(
+                    {
+                        "steps": [
+                            {
+                                "platform_key": "douyin",
+                                "platform_label": "抖音",
+                                "priority": 1,
+                                "status": "pending",
+                                "verification_required": True,
+                                "login_method": "验证码登录",
+                                "second_factor": "无",
+                                "store_link": "https://example.com/dy",
+                            }
+                        ]
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            text = build_profile_execution_board(tmp)
+            self.assertIn("单店执行面板", text)
+            self.assertIn("抖音", text)
+            self.assertIn("133****9056", text)
 
 
 if __name__ == "__main__":

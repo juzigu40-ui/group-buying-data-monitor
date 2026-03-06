@@ -177,6 +177,7 @@ gbm import-account-sheet \
 - 会生成 `login_checklist.md`
 - 会生成 `store_signal_rules.json`
 - 会生成 `verification_plan.json`
+- 会生成 `execution_board.md`
 - 真实账号密码只写入本地 profile 目录，不进入仓库
 
 ### 看下一次该找客户配合哪个验证码
@@ -205,6 +206,17 @@ gbm mark-verification \
 ```bash
 gbm profile-status --profile-dir data/client_profiles/shibaojie
 ```
+
+### 看当前单店 profile 的执行面板
+
+```bash
+gbm profile-board --profile-dir data/client_profiles/shibaojie
+```
+
+说明：
+- 会把每个平台当前能不能先跑、卡在哪、是否要验证码一次性列清
+- 默认只展示脱敏账号，不展示密码
+- 适合在真正找客户要验证码之前先做内部确认
 
 ### 按单店 profile 直接跑一遍
 
