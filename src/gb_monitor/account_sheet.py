@@ -34,6 +34,7 @@ def import_account_sheet(xlsx_path: Path, profile_dir: Path) -> dict[str, Path]:
     signal_rules_payload = build_signal_rules_payload(store_id, primary)
     verification_plan_payload = build_verification_plan_payload(records)
     execution_board_text = build_execution_board(records, verification_plan_payload)
+    snapshot_payloads = build_snapshot_payloads(store_id, primary.store_name)
 
     profile_dir.mkdir(parents=True, exist_ok=True)
     registry_path = profile_dir / "stores_registry.json"
@@ -42,6 +43,7 @@ def import_account_sheet(xlsx_path: Path, profile_dir: Path) -> dict[str, Path]:
     rules_path = profile_dir / "store_signal_rules.json"
     verification_plan_path = profile_dir / "verification_plan.json"
     execution_board_path = profile_dir / "execution_board.md"
+    snapshots_dir = profile_dir / "snapshots"
 
     registry_path.write_text(
         json.dumps(store_payload, ensure_ascii=False, indent=2) + "\n",
@@ -61,6 +63,12 @@ def import_account_sheet(xlsx_path: Path, profile_dir: Path) -> dict[str, Path]:
         encoding="utf-8",
     )
     execution_board_path.write_text(execution_board_text, encoding="utf-8")
+    snapshots_dir.mkdir(parents=True, exist_ok=True)
+    for filename, payload in snapshot_payloads.items():
+        (snapshots_dir / filename).write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
 
     return {
         "stores_registry": registry_path,
@@ -69,6 +77,7 @@ def import_account_sheet(xlsx_path: Path, profile_dir: Path) -> dict[str, Path]:
         "signal_rules": rules_path,
         "verification_plan": verification_plan_path,
         "execution_board": execution_board_path,
+        "snapshots_dir": snapshots_dir,
     }
 
 
@@ -310,6 +319,30 @@ def build_execution_board(
         ]
     )
     return "\n".join(lines) + "\n"
+
+
+def build_snapshot_payloads(store_id: str, store_name: str) -> dict[str, dict[str, object]]:
+    files = {
+        "review_dianping.json": "review",
+        "review_douyin.json": "review",
+        "review_amap.json": "review",
+        "delivery_meituan.json": "delivery",
+        "delivery_eleme.json": "delivery",
+        "delivery_jdwm.json": "delivery",
+    }
+    payloads: dict[str, dict[str, object]] = {}
+    for filename in files:
+        payloads[filename] = {
+            "captured_at": "",
+            "stores": [
+                {
+                    "store_id": store_id,
+                    "store_name": store_name,
+                    "metrics": {},
+                }
+            ],
+        }
+    return payloads
 
 
 def next_verification_target(profile_dir: Path) -> dict[str, object] | None:

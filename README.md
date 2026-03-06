@@ -178,6 +178,7 @@ gbm import-account-sheet \
 - 会生成 `store_signal_rules.json`
 - 会生成 `verification_plan.json`
 - 会生成 `execution_board.md`
+- 会生成 `snapshots/*.json` 单店本地快照模板
 - 真实账号密码只写入本地 profile 目录，不进入仓库
 
 ### 看下一次该找客户配合哪个验证码
@@ -223,6 +224,11 @@ gbm profile-board --profile-dir data/client_profiles/shibaojie
 ```bash
 ./scripts/run_profile.sh data/client_profiles/shibaojie
 ```
+
+说明：
+- 会优先读取 `data/client_profiles/<store>/snapshots/*.json`
+- 后面拿到任一平台导出的本地快照时，直接覆盖对应文件即可
+- 不需要再去改全局 `examples/*.json`
 
 ### 运行门店实时舆情精筛
 

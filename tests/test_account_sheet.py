@@ -6,6 +6,7 @@ from gb_monitor.account_sheet import (
     PlatformAccountRecord,
     build_client_verification_message,
     build_execution_board,
+    build_snapshot_payloads,
     build_profile_execution_board,
     build_profile_status,
     build_account_alias,
@@ -385,6 +386,35 @@ class AccountSheetTests(unittest.TestCase):
             self.assertIn("单店执行面板", text)
             self.assertIn("抖音", text)
             self.assertIn("133****9056", text)
+
+    def test_build_snapshot_payloads_creates_all_single_store_files(self) -> None:
+        payloads = build_snapshot_payloads(
+            "北京-凤状元-江西小炒-非遗米粉(食宝街店)",
+            "凤状元·江西小炒·非遗米粉(食宝街店)",
+        )
+        self.assertEqual(
+            sorted(payloads.keys()),
+            [
+                "delivery_eleme.json",
+                "delivery_jdwm.json",
+                "delivery_meituan.json",
+                "review_amap.json",
+                "review_dianping.json",
+                "review_douyin.json",
+            ],
+        )
+        self.assertEqual(
+            payloads["review_douyin.json"]["stores"][0]["store_id"],
+            "北京-凤状元-江西小炒-非遗米粉(食宝街店)",
+        )
+        self.assertEqual(
+            payloads["delivery_meituan.json"]["stores"][0]["store_name"],
+            "凤状元·江西小炒·非遗米粉(食宝街店)",
+        )
+        self.assertEqual(
+            payloads["review_dianping.json"]["stores"][0]["metrics"],
+            {},
+        )
 
 
 if __name__ == "__main__":
