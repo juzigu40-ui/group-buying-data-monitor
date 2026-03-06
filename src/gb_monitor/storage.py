@@ -163,6 +163,59 @@ class Storage:
         merged.sort(key=lambda x: (x[0], -x[2], x[1]))
         return merged
 
+    def latest_store_metrics(
+        self,
+        store_id: str,
+        platform: str | None = None,
+    ) -> list[tuple[str, str, str, float | None, str | None, str]]:
+        query = """
+            SELECT m.platform, m.metric_key, m.store_name, m.metric_value_num, m.metric_value_text, m.captured_at
+            FROM metrics m
+            JOIN (
+                SELECT platform, metric_key, MAX(captured_at) AS max_captured_at
+                FROM metrics
+                WHERE store_id = ?
+                {platform_filter_inner}
+                GROUP BY platform, metric_key
+            ) latest
+              ON m.platform = latest.platform
+             AND m.metric_key = latest.metric_key
+             AND m.captured_at = latest.max_captured_at
+            WHERE m.store_id = ?
+            {platform_filter_outer}
+            ORDER BY m.platform, m.metric_key
+        """
+        platform_filter_inner = ""
+        platform_filter_outer = ""
+        params: list[object] = [store_id]
+        if platform:
+            platform_filter_inner = "AND platform = ?"
+            platform_filter_outer = "AND m.platform = ?"
+            params.append(platform)
+        params.append(store_id)
+        if platform:
+            params.append(platform)
+
+        with self.connect() as conn:
+            rows = conn.execute(
+                query.format(
+                    platform_filter_inner=platform_filter_inner,
+                    platform_filter_outer=platform_filter_outer,
+                ),
+                params,
+            ).fetchall()
+        return [
+            (
+                str(platform_name),
+                str(metric_key),
+                str(store_name),
+                metric_value_num,
+                metric_value_text,
+                str(captured_at),
+            )
+            for platform_name, metric_key, store_name, metric_value_num, metric_value_text, captured_at in rows
+        ]
+
     def filter_new_signal_matches(
         self,
         matches: list[SignalMatch],

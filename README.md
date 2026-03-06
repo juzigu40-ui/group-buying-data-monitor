@@ -219,6 +219,14 @@ gbm profile-board --profile-dir data/client_profiles/shibaojie
 - 默认只展示脱敏账号，不展示密码
 - 适合在真正找客户要验证码之前先做内部确认
 
+### 看某个门店当前已经入库的最新指标
+
+```bash
+gbm latest-metrics \
+  --store-id "北京-凤状元-江西小炒-非遗米粉(食宝街店)" \
+  --platform douyin
+```
+
 ### 按单店 profile 直接跑一遍
 
 ```bash

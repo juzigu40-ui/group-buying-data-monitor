@@ -108,6 +108,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     profile_board.add_argument("--profile-dir", required=True, help="Local profile directory")
 
+    latest_metrics = sub.add_parser(
+        "latest-metrics",
+        help="Show the latest stored metrics for one store",
+    )
+    latest_metrics.add_argument("--store-id", required=True, help="Store id")
+    latest_metrics.add_argument("--platform", default="", help="Optional platform filter")
+
     score = sub.add_parser(
         "score-signals",
         help="Run store-level real-time sentiment matching against content input",
@@ -265,6 +272,27 @@ def main() -> int:
 
     if args.command == "profile-board":
         print(build_profile_execution_board(Path(args.profile_dir)))
+        return 0
+
+    if args.command == "latest-metrics":
+        rows = storage.latest_store_metrics(
+            store_id=args.store_id,
+            platform=(args.platform.strip() or None),
+        )
+        if not rows:
+            print("latest_metrics=none")
+            return 0
+        current_platform = None
+        current_store_name = None
+        for platform, metric_key, store_name, metric_value_num, metric_value_text, captured_at in rows:
+            if current_store_name is None:
+                current_store_name = store_name
+                print(f"store={store_name}")
+            if platform != current_platform:
+                current_platform = platform
+                print(f"[{platform}]")
+            value = metric_value_text if metric_value_text not in {"", None} else metric_value_num
+            print(f"- {metric_key}: {value} ({captured_at})")
         return 0
 
     if args.command == "score-signals":
