@@ -5,6 +5,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 
+from gb_monitor.account_sheet import import_account_sheet
 from gb_monitor.config import Settings
 from gb_monitor.feishu import FeishuNotifier, build_manual_report
 from gb_monitor.logging import configure_logging
@@ -47,6 +48,17 @@ def build_parser() -> argparse.ArgumentParser:
         "--registry",
         default="",
         help="Path to stores registry JSON (default: GBM_STORE_REGISTRY)",
+    )
+
+    import_sheet = sub.add_parser(
+        "import-account-sheet",
+        help="Import client account sheet into a local profile directory",
+    )
+    import_sheet.add_argument("--xlsx", required=True, help="Path to the client xlsx file")
+    import_sheet.add_argument(
+        "--profile-dir",
+        required=True,
+        help="Local profile directory for generated stores_registry/login_inventory/checklist files",
     )
 
     score = sub.add_parser(
@@ -164,6 +176,15 @@ def main() -> int:
         print(f"stores={summary['store_count']}")
         print(f"platform_bindings={summary['platform_bindings']}")
         print(f"api={summary['api_bindings']} cookie={summary['cookie_bindings']} manual={summary['manual_bindings']}")
+        return 0
+
+    if args.command == "import-account-sheet":
+        outputs = import_account_sheet(
+            xlsx_path=Path(args.xlsx),
+            profile_dir=Path(args.profile_dir),
+        )
+        for key, value in outputs.items():
+            print(f"{key}={value}")
         return 0
 
     if args.command == "score-signals":

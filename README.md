@@ -163,6 +163,26 @@ gbm validate-registry --registry examples/stores_registry.json
 
 说明：采集数据中的 `store_id` 需要与注册表里的 `store_id` 对齐，运行时仅保留已绑定门店的数据。
 
+### 从客户账号表导入本地运行档
+
+```bash
+gbm import-account-sheet \
+  --xlsx /path/to/账号信息表.xlsx \
+  --profile-dir data/client_profiles/shibaojie
+```
+
+说明：
+- 会生成 `stores_registry.json`
+- 会生成本地使用的 `login_inventory.local.json`
+- 会生成 `login_checklist.md`
+- 真实账号密码只写入本地 profile 目录，不进入仓库
+
+### 按单店 profile 直接跑一遍
+
+```bash
+./scripts/run_profile.sh data/client_profiles/shibaojie
+```
+
 ### 运行门店实时舆情精筛
 
 ```bash
