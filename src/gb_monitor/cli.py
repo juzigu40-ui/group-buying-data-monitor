@@ -6,6 +6,7 @@ from datetime import datetime
 from pathlib import Path
 
 from gb_monitor.account_sheet import (
+    build_profile_status,
     build_client_verification_message,
     import_account_sheet,
     next_verification_target,
@@ -93,6 +94,12 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["pending", "ready", "completed", "skipped", "failed", "not_required"],
         help="New status",
     )
+
+    profile_status = sub.add_parser(
+        "profile-status",
+        help="Show current execution status for one local client profile",
+    )
+    profile_status.add_argument("--profile-dir", required=True, help="Local profile directory")
 
     score = sub.add_parser(
         "score-signals",
@@ -243,6 +250,10 @@ def main() -> int:
             status=args.status,
         )
         print(f"updated={path}")
+        return 0
+
+    if args.command == "profile-status":
+        print(build_profile_status(Path(args.profile_dir)))
         return 0
 
     if args.command == "score-signals":

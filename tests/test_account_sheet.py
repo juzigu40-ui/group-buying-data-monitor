@@ -5,6 +5,7 @@ import unittest
 from gb_monitor.account_sheet import (
     PlatformAccountRecord,
     build_client_verification_message,
+    build_profile_status,
     build_account_alias,
     build_login_checklist,
     build_signal_rules_payload,
@@ -228,6 +229,66 @@ class AccountSheetTests(unittest.TestCase):
             self.assertIn("抖音", message)
             self.assertIn("13311549056", message)
             self.assertIn("验证码", message)
+
+    def test_build_profile_status_summarizes_queue_and_gaps(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            (tmp / "login_inventory.local.json").write_text(
+                json.dumps(
+                    {
+                        "store_name": "凤状元·江西小炒·非遗米粉(食宝街店)",
+                        "platforms": {
+                            "douyin": {
+                                "platform_label": "抖音",
+                                "login_method": "验证码登录",
+                                "store_link": "https://example.com/dy",
+                            },
+                            "amap": {
+                                "platform_label": "高德",
+                                "login_method": "",
+                                "store_link": "",
+                            },
+                        },
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            (tmp / "verification_plan.json").write_text(
+                json.dumps(
+                    {
+                        "steps": [
+                            {
+                                "platform_key": "douyin",
+                                "platform_label": "抖音",
+                                "priority": 1,
+                                "status": "pending",
+                                "verification_required": True,
+                                "login_method": "验证码登录",
+                                "second_factor": "无",
+                                "store_link": "https://example.com/dy",
+                            },
+                            {
+                                "platform_key": "amap",
+                                "platform_label": "高德",
+                                "priority": 6,
+                                "status": "not_required",
+                                "verification_required": False,
+                                "login_method": "",
+                                "second_factor": "",
+                                "store_link": "",
+                            },
+                        ]
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            text = build_profile_status(tmp)
+            self.assertIn("待验证码: 1", text)
+            self.assertIn("可直接推进: 1", text)
+            self.assertIn("当前优先级: 抖音(douyin)", text)
+            self.assertIn("高德 登录方式待确认", text)
 
 
 if __name__ == "__main__":

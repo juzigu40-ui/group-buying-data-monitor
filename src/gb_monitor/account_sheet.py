@@ -322,6 +322,74 @@ def build_client_verification_message(profile_dir: Path) -> str:
     return "".join(parts)
 
 
+def build_profile_status(profile_dir: Path) -> str:
+    inventory_path = profile_dir / "login_inventory.local.json"
+    verification_path = profile_dir / "verification_plan.json"
+    if not inventory_path.exists():
+        raise FileNotFoundError(inventory_path)
+    if not verification_path.exists():
+        raise FileNotFoundError(verification_path)
+
+    inventory = json.loads(inventory_path.read_text(encoding="utf-8"))
+    verification = json.loads(verification_path.read_text(encoding="utf-8"))
+
+    store_name = str(inventory.get("store_name", "")).strip()
+    platforms = inventory.get("platforms", {})
+    steps = verification.get("steps", [])
+    if not isinstance(platforms, dict) or not isinstance(steps, list):
+        raise ValueError("invalid profile files")
+
+    lines = [f"门店: {store_name}"]
+    lines.append(f"平台总数: {len(platforms)}")
+
+    pending_steps = [step for step in steps if isinstance(step, dict) and step.get("status") == "pending"]
+    completed_steps = [step for step in steps if isinstance(step, dict) and step.get("status") == "completed"]
+    direct_steps = [
+        step for step in steps if isinstance(step, dict) and step.get("status") == "not_required"
+    ]
+    lines.append(f"待验证码: {len(pending_steps)}")
+    lines.append(f"已完成验证: {len(completed_steps)}")
+    lines.append(f"可直接推进: {len(direct_steps)}")
+
+    next_step = next_verification_target(profile_dir)
+    if next_step:
+        lines.append(
+            "当前优先级: "
+            f"{next_step['platform_label']}({next_step['platform_key']}) / {next_step['login_method'] or '登录方式待确认'}"
+        )
+    else:
+        lines.append("当前优先级: 无")
+
+    if pending_steps:
+        lines.append("待验证码平台:")
+        for step in pending_steps:
+            lines.append(
+                f"- {step['platform_label']}({step['platform_key']}) / {step['login_method'] or '登录方式待确认'}"
+            )
+
+    if direct_steps:
+        lines.append("无需验证码平台:")
+        for step in direct_steps:
+            lines.append(
+                f"- {step['platform_label']}({step['platform_key']})"
+            )
+
+    unresolved: list[str] = []
+    for platform_key, conf in platforms.items():
+        if not isinstance(conf, dict):
+            continue
+        if not str(conf.get("login_method", "")).strip():
+            unresolved.append(f"{conf.get('platform_label', platform_key)} 登录方式待确认")
+        if str(conf.get("store_link", "")).strip() in {"", "无"}:
+            unresolved.append(f"{conf.get('platform_label', platform_key)} 店铺链接待确认")
+    if unresolved:
+        lines.append("待确认信息:")
+        for item in unresolved:
+            lines.append(f"- {item}")
+
+    return "\n".join(lines)
+
+
 def normalize_platform(label: str) -> str:
     text = "".join(str(label).strip().lower().split())
     mapping = {

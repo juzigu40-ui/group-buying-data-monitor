@@ -200,6 +200,12 @@ gbm mark-verification \
   --status completed
 ```
 
+### 看当前单店 profile 的整体状态
+
+```bash
+gbm profile-status --profile-dir data/client_profiles/shibaojie
+```
+
 ### 按单店 profile 直接跑一遍
 
 ```bash
