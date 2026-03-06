@@ -185,11 +185,40 @@ class AccountSheetTests(unittest.TestCase):
         with TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "verification_plan.json"
             path.write_text(json.dumps(plan, ensure_ascii=False), encoding="utf-8")
+            (Path(tmpdir) / "login_inventory.local.json").write_text(
+                json.dumps(
+                    {
+                        "store_name": "店",
+                        "city": "北京",
+                        "platforms": {
+                            "douyin": {
+                                "platform_label": "抖音",
+                                "account": "dy",
+                                "login_method": "验证码登录",
+                                "second_factor": "无",
+                                "store_link": "",
+                            },
+                            "dianping": {
+                                "platform_label": "大众点评",
+                                "account": "dp",
+                                "login_method": "验证码登录",
+                                "second_factor": "首次外地登录需要二次验证",
+                                "store_link": "",
+                            },
+                        },
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
             update_verification_status(Path(tmpdir), "douyin", "completed")
             step = next_verification_target(Path(tmpdir))
             self.assertIsNotNone(step)
             assert step is not None
             self.assertEqual(step["platform_key"], "dianping")
+            board = (Path(tmpdir) / "execution_board.md").read_text(encoding="utf-8")
+            self.assertIn("| 抖音 |", board)
+            self.assertIn("已完成验证", board)
 
     def test_build_client_verification_message_uses_current_step(self) -> None:
         with TemporaryDirectory() as tmpdir:

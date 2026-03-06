@@ -385,6 +385,13 @@ def update_verification_status(profile_dir: Path, platform_key: str, status: str
         raise ValueError(f"platform not found: {platform_key}")
 
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    execution_board_path = profile_dir / "execution_board.md"
+    inventory_path = profile_dir / "login_inventory.local.json"
+    if inventory_path.exists():
+        execution_board_path.write_text(
+            build_profile_execution_board(profile_dir),
+            encoding="utf-8",
+        )
     return path
 
 
