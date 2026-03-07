@@ -709,6 +709,8 @@ class AccountSheetTests(unittest.TestCase):
             self.assertIn("profile-signals", text)
             self.assertIn("client_usage_guide.md", text)
             self.assertIn("--mark-dispatched", text)
+            self.assertIn("feishu-ping", text)
+            self.assertIn("GBM_FEISHU_WEBHOOK", text)
 
     def test_import_account_sheet_preserves_existing_signal_inputs_and_snapshots(self) -> None:
         with TemporaryDirectory() as tmpdir:

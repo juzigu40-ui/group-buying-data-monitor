@@ -53,6 +53,16 @@ def build_parser() -> argparse.ArgumentParser:
     report = sub.add_parser("report", help="Show recent metric count report")
     report.add_argument("--hours", type=int, default=24)
 
+    feishu_ping = sub.add_parser(
+        "feishu-ping",
+        help="Send a Feishu webhook connectivity test message",
+    )
+    feishu_ping.add_argument(
+        "--text",
+        default="",
+        help="Optional custom text; if omitted, send a default connectivity message",
+    )
+
     validate = sub.add_parser(
         "validate-registry",
         help="Validate multi-store account registry JSON",
@@ -309,6 +319,27 @@ def main() -> int:
         print(build_manual_report(datetime.now(settings.timezone), rows))
         return 0
 
+    if args.command == "feishu-ping":
+        if not settings.feishu_webhook:
+            print("delivered=False")
+            print("error=missing_feishu_webhook")
+            return 1
+        now = datetime.now(settings.timezone)
+        text = str(args.text).strip()
+        if not text:
+            text = (
+                "【门店监测系统】飞书 webhook 连通性测试\n"
+                f"时间: {now:%Y-%m-%d %H:%M:%S}\n"
+                "结果: 当前机器人已可接收系统推送"
+            )
+        notifier = FeishuNotifier(
+            webhook=settings.feishu_webhook,
+            at_mobiles=settings.feishu_at_mobiles,
+        )
+        delivered = notifier.send_text(text)
+        print(f"delivered={delivered}")
+        return 0 if delivered else 1
+
     if args.command == "validate-registry":
         registry_path = settings.store_registry_path if not args.registry else Path(args.registry)
         entries = load_registry(path=registry_path)
@@ -440,11 +471,9 @@ def main() -> int:
                     webhook=settings.feishu_webhook,
                     at_mobiles=settings.feishu_at_mobiles,
                 )
-                delivered = notifier.send_text(report) or not settings.feishu_webhook
-            elif args.mark_dispatched:
-                delivered = True
+                delivered = notifier.send_text(report)
 
-            if delivered:
+            if args.mark_dispatched or delivered:
                 storage.record_signal_dispatches(dispatched_at=now, matches=matches)
         return 0
 
@@ -506,6 +535,7 @@ def main() -> int:
                         "rejection_count": result.rejection_count,
                         "deduped_match_count": result.deduped_match_count,
                         "delivered": result.delivered,
+                        "dispatch_recorded": result.dispatch_recorded,
                         "skipped_reason": result.skipped_reason,
                     },
                     ensure_ascii=False,
@@ -520,6 +550,7 @@ def main() -> int:
         print(f"rejection_count={result.rejection_count}")
         print(f"deduped_match_count={result.deduped_match_count}")
         print(f"delivered={result.delivered}")
+        print(f"dispatch_recorded={result.dispatch_recorded}")
         if result.skipped_reason:
             print(f"skipped_reason={result.skipped_reason}")
         return 0

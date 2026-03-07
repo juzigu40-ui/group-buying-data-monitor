@@ -242,6 +242,7 @@ gbm latest-metrics \
 - 会优先读取 `data/client_profiles/<store>/snapshots/*.json`
 - 后面拿到任一平台导出的本地快照时，直接覆盖对应文件即可
 - 不需要再去改全局 `examples/*.json`
+- 如果 `.env` 里已经配置 `GBM_FEISHU_WEBHOOK`，这条命令会自动把运行摘要和实时舆情结果推送到飞书
 
 ### 运行门店实时舆情精筛
 
@@ -249,12 +250,24 @@ gbm latest-metrics \
 gbm score-signals --input examples/douyin_signal_candidates.json
 ```
 
+### 先测试飞书 webhook 是否已打通
+
+```bash
+gbm feishu-ping
+```
+
+说明：
+- 需要先在 `.env` 里补 `GBM_FEISHU_WEBHOOK`
+- 如果要在飞书里 @ 具体同学，再补 `GBM_FEISHU_AT_MOBILES`
+- 这条命令会发一条测试消息，适合交付前先验证机器人是否能正常收消息
+
 如果已经是单店 profile，建议直接跑 profile 级舆情链路：
 
 ```bash
 gbm profile-signals \
   --profile-dir data/client_profiles/shibaojie \
   --mode all \
+  --notify \
   --mark-dispatched \
   --attribution-window-hours 2 \
   --board-output data/client_profiles/shibaojie/signal_watchboard.md \
@@ -287,6 +300,7 @@ gbm signal-board \
 - profile 级链路会优先读取 `signal_inputs/public_xiaohongshu.json`、`signal_inputs/public_douyin.json`、`signal_inputs/public_shipinhao.json`
 - 标准输入文件存在时，不再混用旧的 demo/fallback 文件
 - 正式监测建议带 `--mark-dispatched`，这样去重账本才会记录已发内容
+- 如果要同步推送飞书，正式运行时同时带 `--notify`
 - 重点达人定向监控可在 `store_signal_rules.json` 里配置：`focus_author_names`、`focus_author_tags`、`focus_verified_labels`、`author_level_include_keywords`、`min_follower_count`、`require_poi`
 
 如果需要把高置信结果直接推到飞书：

@@ -4,6 +4,7 @@ import json
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import Mock
 from zoneinfo import ZoneInfo
 
 from gb_monitor.feishu import FeishuNotifier
@@ -165,6 +166,8 @@ class SignalPipelineTests(unittest.TestCase):
             self.assertEqual(result.candidate_count, 2)
             self.assertEqual(result.match_count, 2)
             self.assertEqual(result.deduped_match_count, 2)
+            self.assertFalse(result.delivered)
+            self.assertFalse(result.dispatch_recorded)
             self.assertIn("门店实时舆情精筛结果", result.report_text)
             self.assertIn("凤状元·江西小炒·非遗米粉(食宝街店)", result.report_text)
             self.assertIn("认证信息: 探店达人", result.report_text)
@@ -178,6 +181,78 @@ class SignalPipelineTests(unittest.TestCase):
             self.assertIn("重点名单", result.board_text)
             self.assertIn("当前窗口数据不足", result.board_text)
             self.assertIsNotNone(storage.get_last_success("signal_watchboard"))
+
+    def test_run_profile_signal_pipeline_separates_delivery_from_dispatch_record(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            profile_dir = Path(tmpdir)
+            signal_inputs = profile_dir / "signal_inputs"
+            signal_inputs.mkdir()
+            (profile_dir / "store_signal_rules.json").write_text(
+                json.dumps(
+                    {
+                        "stores": [
+                            {
+                                "store_id": "bj-fzy",
+                                "store_name": "凤状元·江西小炒·非遗米粉(食宝街店)",
+                                "platform": "douyin",
+                                "include_keywords": ["凤状元", "江西小炒", "食宝街店"],
+                                "exact_include_keywords": ["凤状元·江西小炒·非遗米粉(食宝街店)"],
+                                "exclude_keywords": [],
+                                "required_all_keywords": [],
+                                "required_context_keywords": ["探店"],
+                                "required_location_keywords": ["北京"],
+                                "required_any_fields": ["title", "content"],
+                                "author_include_keywords": [],
+                                "author_exclude_keywords": [],
+                                "min_score": 1,
+                            }
+                        ]
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            (signal_inputs / "public_douyin.json").write_text(
+                json.dumps(
+                    {
+                        "platform": "douyin",
+                        "items": [
+                            {
+                                "content_id": "dy-001",
+                                "title": "凤状元探店",
+                                "content": "北京探店，凤状元值得来。",
+                                "author_name": "测试达人",
+                                "url": "https://example.com/dy/001",
+                            }
+                        ],
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+
+            storage = Storage(profile_dir / "monitor.db")
+            storage.init_schema()
+            notifier = Mock(spec=FeishuNotifier)
+            notifier.send_text.return_value = False
+            result = run_profile_signal_pipeline(
+                profile_dir=profile_dir,
+                storage=storage,
+                notifier=notifier,
+                timezone=TZ,
+                mode="all",
+                notify=True,
+                mark_dispatched=True,
+                dedupe_hours=24,
+                min_score_override=None,
+            )
+            self.assertFalse(result.delivered)
+            self.assertTrue(result.dispatch_recorded)
+            with storage.connect() as conn:
+                rows = conn.execute(
+                    "SELECT platform, store_id, content_id FROM signal_dispatches"
+                ).fetchall()
+            self.assertEqual(rows, [("douyin", "bj-fzy", "dy-001")])
 
 
 if __name__ == "__main__":

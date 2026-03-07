@@ -39,6 +39,7 @@ class SignalPipelineResult:
     rejection_count: int
     deduped_match_count: int
     delivered: bool
+    dispatch_recorded: bool
     skipped_reason: str
     report_text: str
     board_text: str
@@ -106,6 +107,7 @@ def run_profile_signal_pipeline(
             rejection_count=0,
             deduped_match_count=0,
             delivered=False,
+            dispatch_recorded=False,
             skipped_reason="missing_signal_inputs",
             report_text=f"[{now:%Y-%m-%d %H:%M:%S}] 未找到舆情输入文件",
             board_text="# 门店实时舆情看板\n\n- 状态：未找到舆情输入文件\n",
@@ -123,6 +125,7 @@ def run_profile_signal_pipeline(
             rejection_count=0,
             deduped_match_count=0,
             delivered=False,
+            dispatch_recorded=False,
             skipped_reason="outside_signal_schedule",
             report_text=f"[{now:%Y-%m-%d %H:%M:%S}] 当前不在舆情调度窗口",
             board_text="# 门店实时舆情看板\n\n- 状态：当前不在舆情调度窗口\n",
@@ -152,11 +155,12 @@ def run_profile_signal_pipeline(
     board_text = build_signal_dashboard(now, filtered_matches, rejections)
 
     delivered = False
+    dispatch_recorded = False
     if notify:
         delivered = notifier.send_text(report_text)
     if mark_dispatched or delivered:
         storage.record_signal_dispatches(dispatched_at=now, matches=filtered_matches)
-        delivered = True
+        dispatch_recorded = True
     storage.set_last_success(SIGNAL_TASK_NAME, now)
 
     return SignalPipelineResult(
@@ -169,6 +173,7 @@ def run_profile_signal_pipeline(
         rejection_count=len(rejections),
         deduped_match_count=len(filtered_matches),
         delivered=delivered,
+        dispatch_recorded=dispatch_recorded,
         skipped_reason="",
         report_text=report_text,
         board_text=board_text,
