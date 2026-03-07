@@ -88,9 +88,15 @@ def load_signal_candidates(path: Path) -> list[SignalCandidate]:
                 content=str(item.get("content", "")).strip(),
                 poi_name=str(item.get("poi_name", "")).strip(),
                 author_name=str(item.get("author_name", "")).strip(),
+                author_level=str(item.get("author_level", "")).strip(),
+                ip_location=str(item.get("ip_location", "")).strip(),
+                topic_tags=_normalize_tag_list(item.get("topic_tags") or item.get("hashtags")),
                 url=str(item.get("url", "")).strip(),
                 published_at=_normalize_optional_text(item.get("published_at")),
                 like_count=_normalize_non_negative_int(item.get("like_count")),
+                favorite_count=_normalize_non_negative_int(
+                    item.get("favorite_count") or item.get("collect_count")
+                ),
                 comment_count=_normalize_non_negative_int(item.get("comment_count")),
                 share_count=_normalize_non_negative_int(item.get("share_count")),
                 raw_payload=item,
@@ -180,12 +186,18 @@ def build_signal_report(now: datetime, matches: list[SignalMatch]) -> str:
         lines.append(f"  命中词: {', '.join(item.matched_terms)}")
         if item.author_name:
             lines.append(f"  作者: {item.author_name}")
+        if item.author_level:
+            lines.append(f"  发布者级别: {item.author_level}")
+        if item.ip_location:
+            lines.append(f"  IP地域: {item.ip_location}")
+        if item.poi_name:
+            lines.append(f"  绑定门店: {item.poi_name}")
+        if item.topic_tags:
+            lines.append(f"  话题标签: {', '.join(item.topic_tags)}")
         if item.published_at:
             lines.append(f"  发布时间: {item.published_at}")
-        if item.like_count or item.comment_count or item.share_count:
-            lines.append(
-                f"  热度: 点赞{item.like_count} / 评论{item.comment_count} / 转发{item.share_count}"
-            )
+        if _engagement_score(item) > 0:
+            lines.append(f"  互动: {_engagement_summary(item)}")
         if item.url:
             lines.append(f"  链接: {item.url}")
         lines.append(f"  说明: {item.reason}")
@@ -240,14 +252,19 @@ def build_signal_dashboard(
             "",
             "## 命中明细",
             "",
-            "| 平台 | 置信 | 分数 | 标题 | 作者 | 时间 | 热度 | 规则说明 |",
+            "| 平台 | 置信 | 分数 | 标题 | 作者/IP | 时间 | 互动 | 规则说明 |",
             "| --- | --- | ---: | --- | --- | --- | --- | --- |",
         ]
     )
     for item in matches:
-        heat = item.like_count + item.comment_count * 2 + item.share_count * 3
+        heat = _engagement_summary(item)
         title = _markdown_cell(item.title or item.url or item.content_id)
-        author = _markdown_cell(item.author_name or "-")
+        author_bits = [item.author_name or "-"]
+        if item.author_level:
+            author_bits.append(item.author_level)
+        if item.ip_location:
+            author_bits.append(item.ip_location)
+        author = _markdown_cell(" / ".join(author_bits))
         published_at = _markdown_cell(item.published_at or "-")
         reason = _markdown_cell(item.reason)
         lines.append(
@@ -274,6 +291,8 @@ def _evaluate_single(
         "content": candidate.content,
         "poi_name": candidate.poi_name,
         "author_name": candidate.author_name,
+        "topic_tags": " ".join(candidate.topic_tags),
+        "ip_location": candidate.ip_location,
     }
 
     exclude_hits = _find_hits(rule.exclude_keywords, field_values)
@@ -344,9 +363,14 @@ def _evaluate_single(
         content_id=candidate.content_id,
         url=candidate.url,
         title=candidate.title,
+        poi_name=candidate.poi_name,
         author_name=candidate.author_name,
+        author_level=candidate.author_level,
+        ip_location=candidate.ip_location,
+        topic_tags=candidate.topic_tags,
         published_at=candidate.published_at,
         like_count=candidate.like_count,
+        favorite_count=candidate.favorite_count,
         comment_count=candidate.comment_count,
         share_count=candidate.share_count,
         score=score,
@@ -497,9 +521,14 @@ def _collapse_ambiguous_matches(
                         content_id=best.content_id,
                         url=best.url,
                         title=best.title,
+                        poi_name=best.poi_name,
                         author_name=best.author_name,
+                        author_level=best.author_level,
+                        ip_location=best.ip_location,
+                        topic_tags=best.topic_tags,
                         published_at=best.published_at,
                         like_count=best.like_count,
+                        favorite_count=best.favorite_count,
                         comment_count=best.comment_count,
                         share_count=best.share_count,
                         reason=f"门店歧义冲突：{store_names}",
@@ -520,9 +549,14 @@ def _build_rejection(rule: SignalRule, candidate: SignalCandidate, reason: str) 
         content_id=candidate.content_id,
         url=candidate.url,
         title=candidate.title,
+        poi_name=candidate.poi_name,
         author_name=candidate.author_name,
+        author_level=candidate.author_level,
+        ip_location=candidate.ip_location,
+        topic_tags=candidate.topic_tags,
         published_at=candidate.published_at,
         like_count=candidate.like_count,
+        favorite_count=candidate.favorite_count,
         comment_count=candidate.comment_count,
         share_count=candidate.share_count,
         reason=reason,
@@ -539,9 +573,14 @@ def _build_rejection_section(rejections: list[SignalRejection]) -> list[str]:
         "| --- | --- | --- | --- | ---: | --- |",
     ]
     for item in rejections[:8]:
-        heat = item.like_count + item.comment_count * 2 + item.share_count * 3
+        heat = _engagement_summary(item)
         title = _markdown_cell(item.title or item.url or item.content_id)
-        author = _markdown_cell(item.author_name or "-")
+        author_bits = [item.author_name or "-"]
+        if item.author_level:
+            author_bits.append(item.author_level)
+        if item.ip_location:
+            author_bits.append(item.ip_location)
+        author = _markdown_cell(" / ".join(author_bits))
         published_at = _markdown_cell(item.published_at or "-")
         reason = _markdown_cell(item.reason)
         lines.append(
@@ -551,7 +590,7 @@ def _build_rejection_section(rejections: list[SignalRejection]) -> list[str]:
 
 
 def _engagement_bonus(candidate: SignalCandidate) -> int:
-    total = candidate.like_count + candidate.comment_count * 2 + candidate.share_count * 3
+    total = _engagement_score(candidate)
     if total >= 500:
         return 3
     if total >= 100:
@@ -613,12 +652,46 @@ def _markdown_cell(value: str) -> str:
     return text or "-"
 
 
+def _engagement_score(candidate: SignalCandidate | SignalMatch | SignalRejection) -> int:
+    return (
+        int(getattr(candidate, "like_count", 0))
+        + int(getattr(candidate, "favorite_count", 0)) * 2
+        + int(getattr(candidate, "comment_count", 0)) * 2
+        + int(getattr(candidate, "share_count", 0)) * 3
+    )
+
+
+def _engagement_summary(candidate: SignalCandidate | SignalMatch | SignalRejection) -> str:
+    parts = [f"点赞{int(getattr(candidate, 'like_count', 0))}"]
+    if int(getattr(candidate, "favorite_count", 0)) > 0:
+        parts.append(f"收藏{int(getattr(candidate, 'favorite_count', 0))}")
+    parts.append(f"评论{int(getattr(candidate, 'comment_count', 0))}")
+    parts.append(f"转发{int(getattr(candidate, 'share_count', 0))}")
+    return " / ".join(parts)
+
+
 def _ensure_str_list(value: object) -> list[str]:
     if value is None:
         return []
     if not isinstance(value, list):
         raise ValueError("expected list")
     return [str(item).strip() for item in value if str(item).strip()]
+
+
+def _normalize_tag_list(value: object) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        items = [part.strip().lstrip("#") for part in value.split() if part.strip()]
+        return [item for item in items if item]
+    if isinstance(value, list):
+        normalized = []
+        for item in value:
+            text = str(item).strip().lstrip("#")
+            if text:
+                normalized.append(text)
+        return normalized
+    return []
 
 
 def _normalize_text(value: str) -> str:

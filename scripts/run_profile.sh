@@ -9,7 +9,6 @@ fi
 PROFILE_DIR="$1"
 STORE_REGISTRY="${PROFILE_DIR}/stores_registry.json"
 SIGNAL_RULES="${PROFILE_DIR}/store_signal_rules.json"
-SIGNAL_INPUT="${PROFILE_DIR}/douyin_signal_candidates.json"
 SNAPSHOT_DIR="${PROFILE_DIR}/snapshots"
 
 if [ -f .env ]; then
@@ -37,9 +36,20 @@ PYTHONPATH=src python3 -m gb_monitor.cli init-db
 PYTHONPATH=src python3 -m gb_monitor.cli validate-registry --registry "$STORE_REGISTRY"
 PYTHONPATH=src python3 -m gb_monitor.cli run --mode all --no-notify
 PYTHONPATH=src python3 -m gb_monitor.cli report --hours 24
+PYTHONPATH=src python3 -m gb_monitor.cli profile-deliverable \
+  --profile-dir "$PROFILE_DIR" \
+  --output "${PROFILE_DIR}/single_store_deliverable.md"
 
-if [ -f "$SIGNAL_INPUT" ] && [ -f "$SIGNAL_RULES" ]; then
-  PYTHONPATH=src python3 -m gb_monitor.cli score-signals \
-    --input "$SIGNAL_INPUT" \
-    --rules "$SIGNAL_RULES"
+if [ -f "$SIGNAL_RULES" ]; then
+  PYTHONPATH=src python3 -m gb_monitor.cli profile-signals \
+    --profile-dir "$PROFILE_DIR" \
+    --mode all \
+    --board-output "${PROFILE_DIR}/signal_watchboard.md" \
+    --report-output "${PROFILE_DIR}/signal_report.txt"
+  PYTHONPATH=src python3 -m gb_monitor.cli profile-signal-deliverable \
+    --profile-dir "$PROFILE_DIR" \
+    --output "${PROFILE_DIR}/signal_delivery_explainer.md"
+  PYTHONPATH=src python3 -m gb_monitor.cli profile-usage-guide \
+    --profile-dir "$PROFILE_DIR" \
+    --output "${PROFILE_DIR}/client_usage_guide.md"
 fi

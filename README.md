@@ -249,6 +249,16 @@ gbm latest-metrics \
 gbm score-signals --input examples/douyin_signal_candidates.json
 ```
 
+如果已经是单店 profile，建议直接跑 profile 级舆情链路：
+
+```bash
+gbm profile-signals \
+  --profile-dir data/client_profiles/shibaojie \
+  --mode all \
+  --board-output data/client_profiles/shibaojie/signal_watchboard.md \
+  --report-output data/client_profiles/shibaojie/signal_report.txt
+```
+
 ### 生成门店实时舆情看板
 
 ```bash
@@ -260,6 +270,8 @@ gbm signal-board \
 说明：
 - 会生成一个适合直接转给客户或贴进飞书/文档的 Markdown 看板
 - 看板会展示平台分布、命中明细、热度、规则说明，以及被过滤掉的噪音样例
+- profile 级链路会优先读取 `signal_inputs/public_xiaohongshu.json`、`signal_inputs/public_douyin.json`、`signal_inputs/public_shipinhao.json`
+- 标准输入文件存在时，不再混用旧的 demo/fallback 文件
 
 如果需要把高置信结果直接推到飞书：
 
@@ -278,6 +290,24 @@ gbm score-signals \
   --dedupe-hours 12
 ```
 
+### 生成客户可交付的舆情说明页和使用说明
+
+```bash
+gbm profile-signal-deliverable \
+  --profile-dir data/client_profiles/shibaojie \
+  --output data/client_profiles/shibaojie/signal_delivery_explainer.md
+```
+
+```bash
+gbm profile-usage-guide \
+  --profile-dir data/client_profiles/shibaojie \
+  --output data/client_profiles/shibaojie/client_usage_guide.md
+```
+
+说明：
+- 客户看到的不是模糊的“OpenClaw+skills”，而是输入规范、规则命中、调度窗口、去重账本和交付文件
+- 如果客户仍希望保留 OpenClaw，建议把它定位为采集/执行引擎；客户日常使用的是本系统产出的看板、报告和交付页
+
 ### 运行测试
 
 ```bash
@@ -291,6 +321,7 @@ PYTHONPATH=src python -m unittest discover -s tests -v
 - 数据分发：已实现飞书推送通道
 - 稳定性：运行状态落库，失败任务有记录
 - 精准过滤：已实现门店级规则匹配、排除词过滤与命中打分
+- 可交付解释：已能输出客户使用说明和舆情交付说明，不再停留在工具名词层面
 
 ## 下一步（接入真实生产数据）
 

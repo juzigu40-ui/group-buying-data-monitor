@@ -99,9 +99,13 @@ class SignalRuleTests(unittest.TestCase):
                 content="静安商圈这家店人很多，但没写具体门店。",
                 poi_name="",
                 author_name="探店路人",
+                author_level="",
+                ip_location="",
+                topic_tags=[],
                 url="https://example.com/ambiguous",
                 published_at=None,
                 like_count=0,
+                favorite_count=0,
                 comment_count=0,
                 share_count=0,
                 raw_payload={},
@@ -137,9 +141,13 @@ class SignalRuleTests(unittest.TestCase):
                 content="双人烤鱼套餐适合第一次来的人。",
                 poi_name="杨记烤鱼(静安店)",
                 author_name="探店阿青",
+                author_level="",
+                ip_location="",
+                topic_tags=[],
                 url="https://example.com/ok",
                 published_at=None,
                 like_count=0,
+                favorite_count=0,
                 comment_count=0,
                 share_count=0,
                 raw_payload={},
@@ -151,9 +159,13 @@ class SignalRuleTests(unittest.TestCase):
                 content="双人烤鱼套餐适合第一次来的人。",
                 poi_name="杨记烤鱼(静安店)",
                 author_name="普通用户",
+                author_level="",
+                ip_location="",
+                topic_tags=[],
                 url="https://example.com/drop",
                 published_at=None,
                 like_count=0,
+                favorite_count=0,
                 comment_count=0,
                 share_count=0,
                 raw_payload={},
@@ -189,9 +201,13 @@ class SignalRuleTests(unittest.TestCase):
                 content="山东省京剧院《状元媒》现场录制",
                 poi_name="",
                 author_name="戏曲账号",
+                author_level="",
+                ip_location="",
+                topic_tags=[],
                 url="https://example.com/noise-1",
                 published_at=None,
                 like_count=30,
+                favorite_count=0,
                 comment_count=1,
                 share_count=0,
                 raw_payload={},
@@ -203,9 +219,13 @@ class SignalRuleTests(unittest.TestCase):
                 content="凤状元这家米粉和小炒都不错，算是北京探店里比较稳的。",
                 poi_name="凤状元·江西小炒·非遗米粉(食宝街店)",
                 author_name="北京探店小李",
+                author_level="",
+                ip_location="北京",
+                topic_tags=["食宝街", "江西小炒"],
                 url="https://example.com/keep-1",
                 published_at=None,
                 like_count=30,
+                favorite_count=8,
                 comment_count=1,
                 share_count=0,
                 raw_payload={},
@@ -241,9 +261,13 @@ class SignalRuleTests(unittest.TestCase):
                 content="山东省京剧院《状元媒》现场录制",
                 poi_name="",
                 author_name="戏曲账号",
+                author_level="",
+                ip_location="",
+                topic_tags=[],
                 url="https://example.com/noise-1",
                 published_at=None,
                 like_count=30,
+                favorite_count=0,
                 comment_count=1,
                 share_count=0,
                 raw_payload={},
@@ -270,6 +294,38 @@ class SignalRuleTests(unittest.TestCase):
             storage.record_signal_dispatches(dispatched_at=now, matches=fresh)
             repeated = storage.filter_new_signal_matches(matches, now=now, dedupe_hours=24)
             self.assertEqual(repeated, [])
+
+    def test_load_signal_candidates_supports_xiaohongshu_extension_fields(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "public_xiaohongshu.json"
+            path.write_text(
+                """
+{
+  "platform": "xiaohongshu",
+  "items": [
+    {
+      "content_id": "xhs-001",
+      "title": "食宝街江西小炒笔记",
+      "content": "凤状元这家门店值得试试",
+      "author_name": "北京探店阿宁",
+      "author_level": "Lv.5",
+      "ip_location": "北京",
+      "topic_tags": ["食宝街", "江西小炒"],
+      "url": "https://example.com/xhs/001",
+      "favorite_count": 22,
+      "comment_count": 3,
+      "share_count": 1
+    }
+  ]
+}
+""".strip(),
+                encoding="utf-8",
+            )
+            candidates = load_signal_candidates(path)
+            self.assertEqual(candidates[0].author_level, "Lv.5")
+            self.assertEqual(candidates[0].ip_location, "北京")
+            self.assertEqual(candidates[0].topic_tags, ["食宝街", "江西小炒"])
+            self.assertEqual(candidates[0].favorite_count, 22)
 
 
 if __name__ == "__main__":

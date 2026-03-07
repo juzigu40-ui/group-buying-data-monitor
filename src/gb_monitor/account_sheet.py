@@ -32,6 +32,8 @@ def import_account_sheet(xlsx_path: Path, profile_dir: Path) -> dict[str, Path]:
     login_payload = build_login_inventory_payload(store_id, records)
     checklist_text = build_login_checklist(records)
     signal_rules_payload = build_signal_rules_payload(store_id, primary)
+    signal_input_payloads = build_signal_input_payloads()
+    signal_input_readme = build_signal_input_readme(primary.store_name, primary.city)
     verification_plan_payload = build_verification_plan_payload(records)
     execution_board_text = build_execution_board(records, verification_plan_payload)
     snapshot_payloads = build_snapshot_payloads(store_id, primary.store_name)
@@ -44,6 +46,8 @@ def import_account_sheet(xlsx_path: Path, profile_dir: Path) -> dict[str, Path]:
     verification_plan_path = profile_dir / "verification_plan.json"
     execution_board_path = profile_dir / "execution_board.md"
     snapshots_dir = profile_dir / "snapshots"
+    signal_inputs_dir = profile_dir / "signal_inputs"
+    signal_input_readme_path = signal_inputs_dir / "README.md"
 
     registry_path.write_text(
         json.dumps(store_payload, ensure_ascii=False, indent=2) + "\n",
@@ -69,12 +73,21 @@ def import_account_sheet(xlsx_path: Path, profile_dir: Path) -> dict[str, Path]:
             json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",
         )
+    signal_inputs_dir.mkdir(parents=True, exist_ok=True)
+    signal_input_readme_path.write_text(signal_input_readme, encoding="utf-8")
+    for filename, payload in signal_input_payloads.items():
+        (signal_inputs_dir / filename).write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
 
     return {
         "stores_registry": registry_path,
         "login_inventory": login_path,
         "login_checklist": checklist_path,
         "signal_rules": rules_path,
+        "signal_inputs_dir": signal_inputs_dir,
+        "signal_input_readme": signal_input_readme_path,
         "verification_plan": verification_plan_path,
         "execution_board": execution_board_path,
         "snapshots_dir": snapshots_dir,
@@ -319,8 +332,8 @@ def build_execution_board(
             "## 公开舆情范围",
             "",
             "- 抖音：已按门店关键词生成首版精筛规则。",
-            "- 小红书：已挂入规则位，后面补真实内容源。",
-            "- 视频号：已挂入规则位，后面补真实内容源。",
+            "- 小红书：已建标准输入文件和规则位，真实内容源可直接按统一结构接入。",
+            "- 视频号：已建标准输入文件和规则位，真实内容源可直接按统一结构接入。",
             "",
             "## 当前先做什么",
             "",
@@ -355,6 +368,85 @@ def build_snapshot_payloads(store_id: str, store_name: str) -> dict[str, dict[st
             ],
         }
     return payloads
+
+
+def build_signal_input_payloads() -> dict[str, dict[str, object]]:
+    return {
+        "public_xiaohongshu.json": {"platform": "xiaohongshu", "items": []},
+        "public_douyin.json": {"platform": "douyin", "items": []},
+        "public_shipinhao.json": {"platform": "shipinhao", "items": []},
+    }
+
+
+def build_signal_input_readme(store_name: str, city: str) -> str:
+    lines = [
+        "# 实时舆情输入规范",
+        "",
+        f"- 门店：{store_name}",
+        f"- 城市：{city}",
+        "- 调度频率：每天 10:00-21:00 每小时一次",
+        "- 目标：把小红书 / 抖音 / 视频号的门店相关内容转成统一结构，再做门店级命中、噪音过滤、去重和飞书分发。",
+        "",
+        "## 这套系统如何解决“舆情监测太模糊”的问题",
+        "",
+        "1. 不是模糊的“OpenClaw+skills”，而是明确的输入文件、规则文件、调度规则和分发输出。",
+        "2. 每个平台都有固定字段，不满足字段的内容不会进入正式命中结果。",
+        "3. 门店命中不是关键词乱撞，而是门店名、POI、城市、上下文、排除词一起判断。",
+        "4. 每次命中都会落出作者、地域、链接、发布时间、互动量、POI 和命中原因，方便客户复核。",
+        "5. 派送有去重账本，同一内容不会在短时间内反复推送。",
+        "",
+        "## 文件",
+        "",
+        "- `public_xiaohongshu.json`: 小红书候选内容",
+        "- `public_douyin.json`: 抖音候选内容",
+        "- `public_shipinhao.json`: 视频号候选内容",
+        "- `store_signal_rules.json`: 门店匹配规则",
+        "",
+        "## 统一字段要求",
+        "",
+        "- 必填：`content_id`, `platform`, `title`, `content`, `author_name`, `url`",
+        "- 推荐：`poi_name`, `published_at`, `like_count`, `comment_count`, `share_count`",
+        "- 扩展：`author_level`, `ip_location`, `topic_tags`, `favorite_count`",
+        "",
+        "## 平台字段重点",
+        "",
+        "### 小红书",
+        "- 需要重点提供：作者、IP 地域、笔记链接、标题、正文、话题标签、发布时间、点赞、收藏。",
+        "",
+        "### 抖音",
+        "- 需要重点提供：发布者级别、标题、视频文案、点赞、评论、转发、POI 门店地址。",
+        "",
+        "### 视频号",
+        "- 需要重点提供：标题、视频文案、点赞、转发、POI 门店地址。",
+        "",
+        "## 最小 JSON 示例",
+        "",
+        "```json",
+        "{",
+        "  \"platform\": \"xiaohongshu\",",
+        "  \"items\": [",
+        "    {",
+        "      \"content_id\": \"xhs-001\",",
+        "      \"title\": \"食宝街这家米粉到底值不值\",",
+        "      \"content\": \"凤状元这家店我今天去吃了\",",
+        "      \"author_name\": \"北京探店阿宁\",",
+        "      \"author_level\": \"Lv.5\",",
+        "      \"ip_location\": \"北京\",",
+        "      \"topic_tags\": [\"食宝街\", \"江西小炒\"],",
+        "      \"poi_name\": \"凤状元·江西小炒·非遗米粉(食宝街店)\",",
+        "      \"url\": \"https://example.com/xhs/001\",",
+        "      \"published_at\": \"2026-03-07T18:00:00+08:00\",",
+        "      \"like_count\": 128,",
+        "      \"favorite_count\": 45,",
+        "      \"comment_count\": 12,",
+        "      \"share_count\": 6",
+        "    }",
+        "  ]",
+        "}",
+        "```",
+        "",
+    ]
+    return "\n".join(lines) + "\n"
 
 
 def next_verification_target(profile_dir: Path) -> dict[str, object] | None:
@@ -544,6 +636,256 @@ def build_profile_execution_board(profile_dir: Path) -> str:
     return build_execution_board(records, verification)
 
 
+def build_profile_deliverable(profile_dir: Path) -> str:
+    inventory_path = profile_dir / "login_inventory.local.json"
+    verification_path = profile_dir / "verification_plan.json"
+    snapshots_dir = profile_dir / "snapshots"
+    if not inventory_path.exists():
+        raise FileNotFoundError(inventory_path)
+    if not verification_path.exists():
+        raise FileNotFoundError(verification_path)
+    if not snapshots_dir.exists():
+        raise FileNotFoundError(snapshots_dir)
+
+    inventory = json.loads(inventory_path.read_text(encoding="utf-8"))
+    verification = json.loads(verification_path.read_text(encoding="utf-8"))
+    store_name = str(inventory.get("store_name", "")).strip()
+    city = str(inventory.get("city", "")).strip()
+    platforms = inventory.get("platforms", {})
+    steps_raw = verification.get("steps", [])
+    if not isinstance(platforms, dict) or not isinstance(steps_raw, list):
+        raise ValueError("invalid profile files")
+
+    step_by_platform = {
+        str(step.get("platform_key")): step
+        for step in steps_raw
+        if isinstance(step, dict)
+    }
+
+    lines = [
+        f"# {store_name} 单店交付页",
+        "",
+        f"- 城市：{city}",
+        "- 交付层级：单店首版（已能统一落库、查数、出执行状态与舆情看板）",
+        "- 当前结论：不需要所有平台都先有完整经营指标，系统也可以先交付；当前已经具备首版可交付条件。",
+        "- 舆情补充：可单独输出《实时舆情交付页》，把输入、规则、调度、去重和派发方式讲清楚。",
+        "",
+        "## 现在已经完成了什么",
+        "",
+        "1. 单店账号映射已经建好，6 个平台都接进了同一套 profile。",
+        "2. 已登录平台的数据快照可以统一灌进 SQLite，并用同一套命令查看。",
+        "3. 门店级实时舆情精筛已经可以运行，能过滤掉和门店无关的噪音内容。",
+        "4. 验证码链路、执行面板、状态推进都已经接通，不再靠手工记忆。",
+        "",
+        "## 平台打通状态",
+        "",
+        "| 平台 | 当前状态 | 已有结果 | 说明 |",
+        "| --- | --- | --- | --- |",
+    ]
+
+    for platform_key in ["douyin", "dianping", "eleme", "jdwm", "meituan", "amap"]:
+        platform_conf = platforms.get(platform_key, {})
+        if not isinstance(platform_conf, dict):
+            continue
+        step = step_by_platform.get(platform_key, {})
+        snapshot_path = snapshots_dir / snapshot_filename_for_platform(platform_key)
+        snapshot = load_snapshot_payload(snapshot_path) if snapshot_path.exists() else {}
+        status, result_summary, note = summarize_deliverable_platform(
+            platform_key=platform_key,
+            platform_conf=platform_conf,
+            step=step,
+            snapshot=snapshot,
+        )
+        lines.append(
+            f"| {platform_conf.get('platform_label', platform_key)} | {status} | {result_summary} | {note} |"
+        )
+
+    lines.extend(
+        [
+            "",
+            "## 当前这套系统已经能做什么",
+            "",
+            "- 输出单店执行面板，知道每个平台是“已打通”“待补指标”还是“待补登录方式”。",
+            "- 查询最新入库指标，不需要重新进后台翻页面。",
+            "- 运行门店级实时舆情精筛，把探店/打卡/门店内容和无关噪音分开。",
+            "- 单独输出舆情交付说明页，向客户讲清楚这套系统不是模糊的“OpenClaw+skills”。",
+            "- 继续往后补平台时，不用推倒重来，只补缺的平台快照就行。",
+            "",
+            "## 还差什么才算更完整",
+            "",
+            "1. 高德当前只拿到了门店主数据，没有经营指标页，这不阻塞首版交付，但会限制平台层分析深度。",
+            "2. 小红书 / 视频号 当前已经有标准输入位和规则位，后续只要补真实内容源即可，不需要重写系统。",
+            "3. 若客户后面要自动通知，再决定接飞书或别的分发方式；这不影响先交付首版系统。",
+            "",
+            "## 交付判断",
+            "",
+            "- 现在已经不是“只登录后台”。",
+            "- 现在是“单店首版已能交付，后续继续补平台深度”。",
+            "- 如果今天就要交，建议口径是：先交单店首版，已覆盖抖音 / 大众点评 / 美团外卖 / 淘宝闪购 / 京东外卖的数据链路，高德保留为主数据补强位。",
+            "- 舆情部分建议同时附上 `signal_delivery_explainer.md`，把客户最关心的“怎么监测、怎么过滤、怎么派发”一次说透。",
+            "- 使用层建议同时附上 `client_usage_guide.md`，把客户怎么查看、怎么继续沿用 OpenClaw 讲清楚。",
+            "",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def build_profile_signal_deliverable(profile_dir: Path) -> str:
+    inventory_path = profile_dir / "login_inventory.local.json"
+    rules_path = profile_dir / "store_signal_rules.json"
+    if not inventory_path.exists():
+        raise FileNotFoundError(inventory_path)
+    if not rules_path.exists():
+        raise FileNotFoundError(rules_path)
+
+    from gb_monitor.signal_pipeline import resolve_profile_signal_input_paths
+    from gb_monitor.signal_rules import load_signal_candidates, load_signal_rules
+
+    inventory = json.loads(inventory_path.read_text(encoding="utf-8"))
+    store_name = str(inventory.get("store_name", "")).strip()
+    city = str(inventory.get("city", "")).strip()
+    rules = load_signal_rules(rules_path)
+    input_paths = resolve_profile_signal_input_paths(profile_dir)
+
+    rule_counts: dict[str, int] = {}
+    for rule in rules:
+        rule_counts[rule.platform] = rule_counts.get(rule.platform, 0) + 1
+
+    signal_inputs_dir = profile_dir / "signal_inputs"
+    standardized_inputs = {
+        "xiaohongshu": signal_inputs_dir / "public_xiaohongshu.json",
+        "douyin": signal_inputs_dir / "public_douyin.json",
+        "shipinhao": signal_inputs_dir / "public_shipinhao.json",
+    }
+    candidate_counts: dict[str, int] = {"xiaohongshu": 0, "douyin": 0, "shipinhao": 0}
+    for path in input_paths:
+        for candidate in load_signal_candidates(path):
+            candidate_counts[candidate.platform] = candidate_counts.get(candidate.platform, 0) + 1
+
+    total_candidates = sum(candidate_counts.values())
+    loaded_files = [path.name for path in input_paths]
+    lines = [
+        f"# {store_name} 实时舆情交付页",
+        "",
+        f"- 城市：{city}",
+        "- 监测时段：每天 10:00-21:00 每小时一次",
+        "- 当前目标：把小红书 / 抖音 / 视频号的公开内容统一进入门店级判断和飞书派发链路。",
+        f"- 当前规则数：{len(rules)}",
+        f"- 当前候选内容数：{total_candidates}",
+        f"- 当前已识别输入文件：{', '.join(loaded_files) if loaded_files else '无'}",
+        "",
+        "## 这套系统如何真正解决实时舆情问题",
+        "",
+        "1. 不是模糊的“OpenClaw+skills”，而是固定输入文件 + 门店规则 + 调度窗口 + 去重账本 + 派发输出。",
+        "2. 输入层先把各平台内容转成统一 JSON，确保作者、链接、时间、互动量、POI 等字段能被稳定读取。",
+        "3. 规则层按门店名、商圈、城市、POI、上下文和排除词同时判断，不靠单个关键词碰运气。",
+        "4. 判断层会输出命中词、命中字段、作者/IP、互动量和原因，客户能看到为什么推送、为什么过滤。",
+        "5. 去重层会记录已发内容，同一条内容不会在短时间内反复轰炸飞书。",
+        "6. 派发层可直接生成 `signal_report.txt` 和 `signal_watchboard.md`，也可以接飞书 webhook。",
+        "",
+        "## 与需求文档的对应关系",
+        "",
+        "| 平台 | 客户要的重点字段 | 我们的标准输入文件 |",
+        "| --- | --- | --- |",
+        "| 小红书 | 作者、IP 地域、链接、标题、正文、话题标签、发布时间、点赞、收藏 | `signal_inputs/public_xiaohongshu.json` |",
+        "| 抖音 | 发布者级别、标题、视频文案、点赞、评论、转发、POI 门店 | `signal_inputs/public_douyin.json` |",
+        "| 视频号 | 标题、视频文案、点赞、转发、POI 门店 | `signal_inputs/public_shipinhao.json` |",
+        "",
+        "## 当前门店输入状态",
+        "",
+        "| 平台 | 状态 | 候选内容数 | 规则数 | 输入文件 |",
+        "| --- | --- | ---: | ---: | --- |",
+    ]
+
+    for platform in ["xiaohongshu", "douyin", "shipinhao"]:
+        path = standardized_inputs[platform]
+        exists = path.exists()
+        count = candidate_counts.get(platform, 0)
+        status = "已标准化接入" if exists and count > 0 else "已建输入位待补真实源" if exists else "待创建输入文件"
+        path_label = str(path.relative_to(profile_dir)) if exists else path.name
+        lines.append(
+            f"| {_signal_platform_label(platform)} | {status} | {count} | {rule_counts.get(platform, 0)} | `{path_label}` |"
+        )
+
+    lines.extend(
+        [
+            "",
+            "## 当前规则覆盖方式",
+            "",
+            "- 每个平台都有独立门店规则，最低命中分默认不低于 8 分。",
+            "- 规则同时包含门店名、别名、城市、位置上下文、餐饮上下文和排除词。",
+            "- 对凤状元这类容易撞到戏曲/民俗内容的词，已经单独加了噪音排除规则。",
+            "",
+            "## 本次交付会一起给客户什么",
+            "",
+            "- `signal_inputs/README.md`：说明输入格式、字段要求和最小示例。",
+            "- `signal_watchboard.md`：面向运营或老板的舆情看板。",
+            "- `signal_report.txt`：适合飞书直接发送的文本版命中结果。",
+            "- `signal_delivery_explainer.md`：说明这套系统怎么解决“实时舆情太模糊”的问题。",
+            "- `client_usage_guide.md`：告诉客户日常怎么用，以及如果继续用 OpenClaw 应该怎么接。",
+            "",
+            "## 对客户的说明口径",
+            "",
+            "这套实时舆情不是一句“会用 OpenClaw+skills 做监测”的抽象表述，而是已经明确到输入、规则、时间窗、过滤逻辑和派发结果的系统。OpenClaw 如果继续用，也只承担采集和执行层，不直接作为客户看到的交付结果。后面即使再补小红书或视频号的真实来源，也只是往标准输入文件里加数据，不需要推倒重来。",
+            "",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def build_profile_usage_guide(profile_dir: Path) -> str:
+    inventory_path = profile_dir / "login_inventory.local.json"
+    if not inventory_path.exists():
+        raise FileNotFoundError(inventory_path)
+
+    inventory = json.loads(inventory_path.read_text(encoding="utf-8"))
+    store_name = str(inventory.get("store_name", "")).strip()
+    city = str(inventory.get("city", "")).strip()
+    profile_path = profile_dir.as_posix()
+    lines = [
+        f"# {store_name} 系统使用说明",
+        "",
+        f"- 城市：{city}",
+        "- 适用对象：门店老板 / 运营 / 代运营 / 内部执行同学",
+        "- 核心原则：客户看到的是稳定的门店监测系统，不是直接操作底层采集脚本。",
+        "",
+        "## 客户怎么理解这套系统",
+        "",
+        "1. OpenClaw 可以继续保留，但它的角色是采集和执行引擎，不是最终交付本身。",
+        "2. 客户真正使用的是标准化后的结果层：门店指标快照、执行面板、舆情看板、舆情报告。",
+        "3. 这样做的好处是：以后即使换采集方式，客户使用方式也不用改。",
+        "",
+        "## 客户日常使用顺序",
+        "",
+        "1. 先看 `single_store_deliverable.md`，确认门店当前整体交付状态。",
+        "2. 再看 `execution_board.md`，确认哪个平台已打通、哪个平台还在补。",
+        "3. 看 `signal_watchboard.md` 和 `signal_report.txt`，确认实时舆情命中内容。",
+        "4. 需要查经营指标时，直接看最新导出的交付页或查询最新指标结果。",
+        "",
+        "## 如果客户还是希望继续用 OpenClaw",
+        "",
+        "可以，但要把职责说清楚：",
+        "- OpenClaw：负责登录、抓取、调度、把原始内容写进标准输入文件。",
+        "- 本系统：负责统一字段、门店规则判断、噪音过滤、去重、落库、出看板、出飞书文本。",
+        "- 客户最终看的是本系统产出的交付文件，而不是原始抓取结果。",
+        "",
+        "## 执行同学怎么跑",
+        "",
+        f"1. 跑整店链路：`./scripts/run_profile.sh {profile_path}`",
+        f"2. 只跑实时舆情：`PYTHONPATH=src python3 -m gb_monitor.cli profile-signals --profile-dir '{profile_path}' --mode all --board-output '{profile_path}/signal_watchboard.md' --report-output '{profile_path}/signal_report.txt'`",
+        f"3. 生成舆情说明页：`PYTHONPATH=src python3 -m gb_monitor.cli profile-signal-deliverable --profile-dir '{profile_path}' --output '{profile_path}/signal_delivery_explainer.md'`",
+        f"4. 生成客户使用说明：`PYTHONPATH=src python3 -m gb_monitor.cli profile-usage-guide --profile-dir '{profile_path}' --output '{profile_path}/client_usage_guide.md'`",
+        "",
+        "## 需要客户补什么",
+        "",
+        "- 登录验证码或二次验证时，按执行面板顺序一次性配合。",
+        "- 如果要接更多舆情来源，只需要继续补标准输入文件，不需要改客户使用方式。",
+        "- 如果要自动飞书推送，只需要补 webhook，不需要重做规则。",
+        "",
+    ]
+    return "\n".join(lines)
+
+
 def summarize_platform_status(
     record: PlatformAccountRecord,
     step: dict[str, object] | None,
@@ -574,6 +916,15 @@ def summarize_platform_blocker(
     if not blockers:
         return "无"
     return "；".join(blockers)
+
+
+def _signal_platform_label(platform: str) -> str:
+    mapping = {
+        "xiaohongshu": "小红书",
+        "douyin": "抖音",
+        "shipinhao": "视频号",
+    }
+    return mapping.get(platform, platform)
 
 
 def mask_account(account: str) -> str:
@@ -743,6 +1094,95 @@ def slugify(text: str) -> str:
     lowered = re.sub(r"[^0-9a-zA-Z\u4e00-\u9fff()\-]+", "-", lowered)
     lowered = lowered.strip("-")
     return lowered
+
+
+def snapshot_filename_for_platform(platform_key: str) -> str:
+    mapping = {
+        "dianping": "review_dianping.json",
+        "douyin": "review_douyin.json",
+        "amap": "review_amap.json",
+        "meituan": "delivery_meituan.json",
+        "eleme": "delivery_eleme.json",
+        "jdwm": "delivery_jdwm.json",
+    }
+    return mapping[platform_key]
+
+
+def load_snapshot_payload(path: Path) -> dict[str, object]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    return payload if isinstance(payload, dict) else {}
+
+
+def summarize_deliverable_platform(
+    platform_key: str,
+    platform_conf: dict[str, object],
+    step: dict[str, object],
+    snapshot: dict[str, object],
+) -> tuple[str, str, str]:
+    captured_at = str(snapshot.get("captured_at", "")).strip()
+    stores = snapshot.get("stores", [])
+    metrics: dict[str, object] = {}
+    if isinstance(stores, list) and stores and isinstance(stores[0], dict):
+        maybe_metrics = stores[0].get("metrics", {})
+        if isinstance(maybe_metrics, dict):
+            metrics = maybe_metrics
+
+    if platform_key == "meituan":
+        if step.get("status") == "completed" and not metrics:
+            return ("登录已通", "暂无经营快照", "验证码链路已过，后续补一次后台指标页即可")
+    if platform_key == "amap":
+        if metrics:
+            return ("主数据已通", render_metric_brief(platform_key, metrics), "当前平台侧拿到的是门店主数据，不是经营看板")
+        return ("已登录", "门店详情页可达", "高德当前只作为门店主数据补充，不阻塞首版交付")
+    if metrics:
+        return (
+            "数据已落",
+            render_metric_brief(platform_key, metrics),
+            f"最新快照：{captured_at or '未写时间'}",
+        )
+    if step.get("status") == "completed":
+        return ("登录已通", "暂无经营快照", "会话已打通，待补平台指标")
+    return ("待补", "暂无结果", "当前还不能稳定产出平台数据")
+
+
+def render_metric_brief(platform_key: str, metrics: dict[str, object]) -> str:
+    if platform_key == "douyin":
+        return (
+            f"实时成交 {metrics.get('realtime_transaction_amount', '-')}"
+            f" / 核销 {metrics.get('realtime_writeoff_amount', '-')}"
+            f" / 曝光 {metrics.get('traffic_impressions', '-')}"
+        )
+    if platform_key == "dianping":
+        return (
+            f"成交额 {metrics.get('transaction_amount_discounted', '-')}"
+            f" / 消费额 {metrics.get('consumption_amount', '-')}"
+            f" / ROS {metrics.get('ros_score_avg', '-')}"
+        )
+    if platform_key == "eleme":
+        return (
+            f"预计收入 {metrics.get('estimated_income_today', '-')}"
+            f" / 营业额 {metrics.get('transaction_amount_today', '-')}"
+            f" / 有效订单 {metrics.get('valid_orders', '-')}"
+        )
+    if platform_key == "jdwm":
+        return (
+            f"预计收入 {metrics.get('estimated_income_today', '-')}"
+            f" / 有效订单 {metrics.get('valid_orders', '-')}"
+            f" / 曝光 {metrics.get('exposure_count_yesterday', '-')}"
+        )
+    if platform_key == "meituan":
+        return (
+            f"预计收入 {metrics.get('estimated_income_today', '-')}"
+            f" / 有效订单 {metrics.get('valid_orders', '-')}"
+            f" / 店铺分 {metrics.get('store_score_today', '-')}"
+        )
+    if platform_key == "amap":
+        return (
+            f"门店 {metrics.get('dashboard_store_name_text', '-')}"
+            f" / 状态 {metrics.get('status_text', '-')}"
+            f" / 认领 {metrics.get('claim_status_text', '-')}"
+        )
+    return "已接入"
 
 
 def _row_to_dict(header: list[str], row: list[str]) -> dict[str, str]:

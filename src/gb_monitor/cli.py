@@ -6,7 +6,10 @@ from datetime import datetime
 from pathlib import Path
 
 from gb_monitor.account_sheet import (
+    build_profile_deliverable,
+    build_profile_signal_deliverable,
     build_profile_status,
+    build_profile_usage_guide,
     build_profile_execution_board,
     build_client_verification_message,
     import_account_sheet,
@@ -26,6 +29,7 @@ from gb_monitor.signal_rules import (
     matches_to_json,
     review_candidates,
 )
+from gb_monitor.signal_pipeline import run_profile_signal_pipeline
 from gb_monitor.store_registry import (
     enabled_store_ids_by_platform,
     enabled_platform_binding_counts,
@@ -110,6 +114,47 @@ def build_parser() -> argparse.ArgumentParser:
     )
     profile_board.add_argument("--profile-dir", required=True, help="Local profile directory")
 
+    profile_deliverable = sub.add_parser(
+        "profile-deliverable",
+        help="Render a customer-facing single-store delivery page",
+    )
+    profile_deliverable.add_argument("--profile-dir", required=True, help="Local profile directory")
+    profile_deliverable.add_argument(
+        "--output",
+        default="",
+        help="Optional output markdown path; if omitted, print to stdout",
+    )
+
+    profile_signal_deliverable = sub.add_parser(
+        "profile-signal-deliverable",
+        help="Render a customer-facing real-time sentiment delivery page",
+    )
+    profile_signal_deliverable.add_argument(
+        "--profile-dir",
+        required=True,
+        help="Local profile directory",
+    )
+    profile_signal_deliverable.add_argument(
+        "--output",
+        default="",
+        help="Optional output markdown path; if omitted, print to stdout",
+    )
+
+    profile_usage_guide = sub.add_parser(
+        "profile-usage-guide",
+        help="Render a customer-facing system usage guide",
+    )
+    profile_usage_guide.add_argument(
+        "--profile-dir",
+        required=True,
+        help="Local profile directory",
+    )
+    profile_usage_guide.add_argument(
+        "--output",
+        default="",
+        help="Optional output markdown path; if omitted, print to stdout",
+    )
+
     latest_metrics = sub.add_parser(
         "latest-metrics",
         help="Show the latest stored metrics for one store",
@@ -166,6 +211,28 @@ def build_parser() -> argparse.ArgumentParser:
         "--output",
         default="",
         help="Optional output markdown path; if omitted, print to stdout",
+    )
+
+    profile_signals = sub.add_parser(
+        "profile-signals",
+        help="Run profile-level multi-platform real-time sentiment pipeline",
+    )
+    profile_signals.add_argument("--profile-dir", required=True, help="Local profile directory")
+    profile_signals.add_argument("--mode", choices=["scheduled", "all"], default="scheduled")
+    profile_signals.add_argument("--notify", action="store_true")
+    profile_signals.add_argument("--mark-dispatched", action="store_true")
+    profile_signals.add_argument("--dedupe-hours", type=int, default=24)
+    profile_signals.add_argument("--min-score", type=int, default=0)
+    profile_signals.add_argument("--json", action="store_true")
+    profile_signals.add_argument(
+        "--report-output",
+        default="",
+        help="Optional output txt path for Feishu-ready signal report",
+    )
+    profile_signals.add_argument(
+        "--board-output",
+        default="",
+        help="Optional output markdown path for signal watchboard",
     )
 
     return parser
@@ -293,6 +360,36 @@ def main() -> int:
         print(build_profile_execution_board(Path(args.profile_dir)))
         return 0
 
+    if args.command == "profile-deliverable":
+        deliverable = build_profile_deliverable(Path(args.profile_dir))
+        if args.output:
+            path = Path(args.output)
+            path.write_text(deliverable + "\n", encoding="utf-8")
+            print(f"written={path}")
+            return 0
+        print(deliverable)
+        return 0
+
+    if args.command == "profile-signal-deliverable":
+        deliverable = build_profile_signal_deliverable(Path(args.profile_dir))
+        if args.output:
+            path = Path(args.output)
+            path.write_text(deliverable + "\n", encoding="utf-8")
+            print(f"written={path}")
+            return 0
+        print(deliverable)
+        return 0
+
+    if args.command == "profile-usage-guide":
+        guide = build_profile_usage_guide(Path(args.profile_dir))
+        if args.output:
+            path = Path(args.output)
+            path.write_text(guide + "\n", encoding="utf-8")
+            print(f"written={path}")
+            return 0
+        print(guide)
+        return 0
+
     if args.command == "latest-metrics":
         rows = storage.latest_store_metrics(
             store_id=args.store_id,
@@ -368,6 +465,61 @@ def main() -> int:
             print(f"written={path}")
             return 0
         print(board)
+        return 0
+
+    if args.command == "profile-signals":
+        storage.init_schema()
+        notifier = FeishuNotifier(
+            webhook=settings.feishu_webhook,
+            at_mobiles=settings.feishu_at_mobiles,
+        )
+        result = run_profile_signal_pipeline(
+            profile_dir=Path(args.profile_dir),
+            storage=storage,
+            notifier=notifier,
+            timezone=settings.timezone,
+            mode=args.mode,
+            notify=args.notify,
+            mark_dispatched=args.mark_dispatched,
+            dedupe_hours=args.dedupe_hours,
+            min_score_override=(args.min_score if args.min_score > 0 else None),
+        )
+        if args.report_output:
+            report_path = Path(args.report_output)
+            report_path.write_text(result.report_text + "\n", encoding="utf-8")
+            print(f"report_written={report_path}")
+        if args.board_output:
+            board_path = Path(args.board_output)
+            board_path.write_text(result.board_text + "\n", encoding="utf-8")
+            print(f"board_written={board_path}")
+        if args.json:
+            print(
+                json.dumps(
+                    {
+                        "executed": result.executed,
+                        "mode": result.mode,
+                        "input_files": [str(path) for path in result.input_files],
+                        "candidate_count": result.candidate_count,
+                        "match_count": result.match_count,
+                        "rejection_count": result.rejection_count,
+                        "deduped_match_count": result.deduped_match_count,
+                        "delivered": result.delivered,
+                        "skipped_reason": result.skipped_reason,
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+            return 0
+        print(f"executed={result.executed}")
+        print(f"mode={result.mode}")
+        print(f"candidate_count={result.candidate_count}")
+        print(f"match_count={result.match_count}")
+        print(f"rejection_count={result.rejection_count}")
+        print(f"deduped_match_count={result.deduped_match_count}")
+        print(f"delivered={result.delivered}")
+        if result.skipped_reason:
+            print(f"skipped_reason={result.skipped_reason}")
         return 0
 
     parser.print_help()

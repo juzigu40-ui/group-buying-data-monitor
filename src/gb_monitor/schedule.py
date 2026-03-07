@@ -35,9 +35,19 @@ def due_for_delivery(now: datetime, last_success: datetime | None) -> bool:
     return now - last_success >= timedelta(minutes=30)
 
 
+def due_for_signal(now: datetime, last_success: datetime | None) -> bool:
+    if not _in_time_window(now, (10, 0), (21, 0)):
+        return False
+    if last_success is None:
+        return True
+    return now - last_success >= timedelta(hours=1)
+
+
 def should_run(now: datetime, schedule_kind: str, last_success: datetime | None) -> bool:
     if schedule_kind == "review":
         return due_for_review(now, last_success)
     if schedule_kind == "delivery":
         return due_for_delivery(now, last_success)
+    if schedule_kind == "signal":
+        return due_for_signal(now, last_success)
     raise ValueError(f"Unknown schedule kind: {schedule_kind}")

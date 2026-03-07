@@ -6,9 +6,12 @@ from gb_monitor.account_sheet import (
     PlatformAccountRecord,
     build_client_verification_message,
     build_execution_board,
+    build_profile_deliverable,
+    build_profile_signal_deliverable,
     build_snapshot_payloads,
     build_profile_execution_board,
     build_profile_status,
+    build_profile_usage_guide,
     build_account_alias,
     build_login_checklist,
     build_signal_rules_payload,
@@ -20,6 +23,7 @@ from gb_monitor.account_sheet import (
     needs_verification,
     next_verification_target,
     normalize_platform,
+    render_metric_brief,
     update_verification_status,
 )
 from pathlib import Path
@@ -449,6 +453,204 @@ class AccountSheetTests(unittest.TestCase):
             payloads["review_dianping.json"]["stores"][0]["metrics"],
             {},
         )
+
+    def test_render_metric_brief_formats_meituan_metrics(self) -> None:
+        brief = render_metric_brief(
+            "meituan",
+            {
+                "estimated_income_today": 539.21,
+                "valid_orders": 19,
+                "store_score_today": 91,
+            },
+        )
+        self.assertIn("预计收入 539.21", brief)
+        self.assertIn("有效订单 19", brief)
+        self.assertIn("店铺分 91", brief)
+
+    def test_build_profile_deliverable_includes_meituan_delivery_snapshot(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            (tmp / "login_inventory.local.json").write_text(
+                json.dumps(
+                    {
+                        "store_name": "凤状元·江西小炒·非遗米粉(食宝街店)",
+                        "city": "北京",
+                        "platforms": {
+                            "meituan": {
+                                "platform_label": "美团外卖",
+                                "account": "mt099858wr",
+                                "login_method": "验证码登录",
+                                "second_factor": "首次外地登录需要二次验证",
+                                "store_link": "https://waimaie.meituan.com/",
+                            },
+                            "amap": {
+                                "platform_label": "高德",
+                                "account": "13311549056",
+                                "login_method": "",
+                                "second_factor": "",
+                                "store_link": "http://mp.amap.com/",
+                            },
+                        },
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            (tmp / "verification_plan.json").write_text(
+                json.dumps(
+                    {
+                        "steps": [
+                            {
+                                "platform_key": "meituan",
+                                "platform_label": "美团外卖",
+                                "priority": 3,
+                                "status": "completed",
+                            },
+                            {
+                                "platform_key": "amap",
+                                "platform_label": "高德",
+                                "priority": 6,
+                                "status": "not_required",
+                            },
+                        ]
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            snapshots = tmp / "snapshots"
+            snapshots.mkdir()
+            (snapshots / "delivery_meituan.json").write_text(
+                json.dumps(
+                    {
+                        "captured_at": "2026-03-07T17:56:00+08:00",
+                        "stores": [
+                            {
+                                "store_id": "北京-凤状元-江西小炒-非遗米粉(食宝街店)",
+                                "store_name": "凤状元·江西小炒·非遗米粉(食宝街店)",
+                                "metrics": {
+                                    "estimated_income_today": 539.21,
+                                    "valid_orders": 19,
+                                    "store_score_today": 91,
+                                },
+                            }
+                        ],
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            (snapshots / "review_amap.json").write_text(
+                json.dumps(
+                    {
+                        "captured_at": "2026-03-07T17:20:00+08:00",
+                        "stores": [
+                            {
+                                "store_id": "北京-凤状元-江西小炒-非遗米粉(食宝街店)",
+                                "store_name": "凤状元·江西小炒·非遗米粉(食宝街店)",
+                                "metrics": {},
+                            }
+                        ],
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            text = build_profile_deliverable(tmp)
+            self.assertIn("美团外卖", text)
+            self.assertIn("预计收入 539.21 / 有效订单 19 / 店铺分 91", text)
+            self.assertNotIn("美团外卖目前只有登录成功", text)
+            self.assertIn("已覆盖抖音 / 大众点评 / 美团外卖 / 淘宝闪购 / 京东外卖的数据链路", text)
+
+    def test_build_profile_signal_deliverable_explains_concrete_system(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            (tmp / "login_inventory.local.json").write_text(
+                json.dumps(
+                    {
+                        "store_name": "凤状元·江西小炒·非遗米粉(食宝街店)",
+                        "city": "北京",
+                        "platforms": {},
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            primary = PlatformAccountRecord(
+                platform_label="抖音",
+                platform_key="douyin",
+                store_name="凤状元·江西小炒·非遗米粉(食宝街店)",
+                city="北京",
+                store_link="",
+                account="13311549056",
+                password="secret",
+                login_method="验证码登录",
+                second_factor="无",
+            )
+            (tmp / "store_signal_rules.json").write_text(
+                json.dumps(
+                    build_signal_rules_payload("北京-凤状元-江西小炒-非遗米粉(食宝街店)", primary),
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            signal_inputs = tmp / "signal_inputs"
+            signal_inputs.mkdir()
+            (signal_inputs / "public_xiaohongshu.json").write_text(
+                json.dumps(
+                    {
+                        "platform": "xiaohongshu",
+                        "items": [
+                            {
+                                "content_id": "xhs-001",
+                                "title": "食宝街这家江西小炒",
+                                "content": "凤状元这家门店可以试试",
+                                "author_name": "北京探店阿宁",
+                                "author_level": "Lv.5",
+                                "ip_location": "北京",
+                                "topic_tags": ["食宝街"],
+                                "poi_name": "凤状元·江西小炒·非遗米粉(食宝街店)",
+                                "url": "https://example.com/xhs/001",
+                                "favorite_count": 8,
+                            }
+                        ],
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            (signal_inputs / "public_douyin.json").write_text(
+                json.dumps({"platform": "douyin", "items": []}, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            (signal_inputs / "public_shipinhao.json").write_text(
+                json.dumps({"platform": "shipinhao", "items": []}, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            text = build_profile_signal_deliverable(tmp)
+            self.assertIn("不是模糊的“OpenClaw+skills”", text)
+            self.assertIn("public_xiaohongshu.json", text)
+            self.assertIn("public_douyin.json", text)
+            self.assertIn("public_shipinhao.json", text)
+
+    def test_build_profile_usage_guide_positions_openclaw_as_engine(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            (tmp / "login_inventory.local.json").write_text(
+                json.dumps(
+                    {
+                        "store_name": "凤状元·江西小炒·非遗米粉(食宝街店)",
+                        "city": "北京",
+                        "platforms": {},
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            text = build_profile_usage_guide(tmp)
+            self.assertIn("OpenClaw 可以继续保留，但它的角色是采集和执行引擎", text)
+            self.assertIn("profile-signals", text)
+            self.assertIn("client_usage_guide.md", text)
 
 
 if __name__ == "__main__":

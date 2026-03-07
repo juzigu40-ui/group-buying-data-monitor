@@ -66,9 +66,13 @@ class SignalCandidate:
     content: str
     poi_name: str
     author_name: str
+    author_level: str
+    ip_location: str
+    topic_tags: list[str]
     url: str
     published_at: str | None
     like_count: int
+    favorite_count: int
     comment_count: int
     share_count: int
     raw_payload: dict[str, Any]
@@ -82,9 +86,14 @@ class SignalMatch:
     content_id: str
     url: str
     title: str
+    poi_name: str
     author_name: str
+    author_level: str
+    ip_location: str
+    topic_tags: list[str]
     published_at: str | None
     like_count: int
+    favorite_count: int
     comment_count: int
     share_count: int
     score: int
@@ -103,9 +112,14 @@ class SignalRejection:
     content_id: str
     url: str
     title: str
+    poi_name: str
     author_name: str
+    author_level: str
+    ip_location: str
+    topic_tags: list[str]
     published_at: str | None
     like_count: int
+    favorite_count: int
     comment_count: int
     share_count: int
     reason: str
