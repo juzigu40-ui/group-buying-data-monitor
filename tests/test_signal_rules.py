@@ -73,6 +73,7 @@ class SignalRuleTests(unittest.TestCase):
                 required_any_fields=["title", "content"],
                 author_include_keywords=[],
                 author_exclude_keywords=[],
+                author_level_include_keywords=[],
                 min_score=4,
             ),
             SignalRule(
@@ -88,6 +89,7 @@ class SignalRuleTests(unittest.TestCase):
                 required_any_fields=["title", "content"],
                 author_include_keywords=[],
                 author_exclude_keywords=[],
+                author_level_include_keywords=[],
                 min_score=4,
             ),
         ]
@@ -100,6 +102,8 @@ class SignalRuleTests(unittest.TestCase):
                 poi_name="",
                 author_name="探店路人",
                 author_level="",
+                verified_label="",
+                follower_count=0,
                 ip_location="",
                 topic_tags=[],
                 url="https://example.com/ambiguous",
@@ -130,6 +134,7 @@ class SignalRuleTests(unittest.TestCase):
                 required_any_fields=["title", "content", "poi_name"],
                 author_include_keywords=["探店"],
                 author_exclude_keywords=["招商"],
+                author_level_include_keywords=[],
                 min_score=6,
             )
         ]
@@ -142,6 +147,8 @@ class SignalRuleTests(unittest.TestCase):
                 poi_name="杨记烤鱼(静安店)",
                 author_name="探店阿青",
                 author_level="",
+                verified_label="",
+                follower_count=0,
                 ip_location="",
                 topic_tags=[],
                 url="https://example.com/ok",
@@ -160,6 +167,8 @@ class SignalRuleTests(unittest.TestCase):
                 poi_name="杨记烤鱼(静安店)",
                 author_name="普通用户",
                 author_level="",
+                verified_label="",
+                follower_count=0,
                 ip_location="",
                 topic_tags=[],
                 url="https://example.com/drop",
@@ -190,6 +199,7 @@ class SignalRuleTests(unittest.TestCase):
                 required_any_fields=["title", "content", "poi_name"],
                 author_include_keywords=[],
                 author_exclude_keywords=[],
+                author_level_include_keywords=[],
                 min_score=8,
             )
         ]
@@ -202,6 +212,8 @@ class SignalRuleTests(unittest.TestCase):
                 poi_name="",
                 author_name="戏曲账号",
                 author_level="",
+                verified_label="",
+                follower_count=0,
                 ip_location="",
                 topic_tags=[],
                 url="https://example.com/noise-1",
@@ -220,6 +232,8 @@ class SignalRuleTests(unittest.TestCase):
                 poi_name="凤状元·江西小炒·非遗米粉(食宝街店)",
                 author_name="北京探店小李",
                 author_level="",
+                verified_label="探店达人",
+                follower_count=125000,
                 ip_location="北京",
                 topic_tags=["食宝街", "江西小炒"],
                 url="https://example.com/keep-1",
@@ -250,6 +264,7 @@ class SignalRuleTests(unittest.TestCase):
                 required_any_fields=["title", "content", "poi_name"],
                 author_include_keywords=[],
                 author_exclude_keywords=[],
+                author_level_include_keywords=[],
                 min_score=8,
             )
         ]
@@ -262,6 +277,8 @@ class SignalRuleTests(unittest.TestCase):
                 poi_name="",
                 author_name="戏曲账号",
                 author_level="",
+                verified_label="",
+                follower_count=0,
                 ip_location="",
                 topic_tags=[],
                 url="https://example.com/noise-1",
@@ -323,9 +340,79 @@ class SignalRuleTests(unittest.TestCase):
             )
             candidates = load_signal_candidates(path)
             self.assertEqual(candidates[0].author_level, "Lv.5")
+            self.assertEqual(candidates[0].verified_label, "")
+            self.assertEqual(candidates[0].follower_count, 0)
             self.assertEqual(candidates[0].ip_location, "北京")
             self.assertEqual(candidates[0].topic_tags, ["食宝街", "江西小炒"])
             self.assertEqual(candidates[0].favorite_count, 22)
+
+    def test_match_candidates_can_require_poi_and_author_tier(self) -> None:
+        rules = [
+            SignalRule(
+                store_id="s1",
+                store_name="凤状元·江西小炒·非遗米粉(食宝街店)",
+                platform="douyin",
+                include_keywords=["凤状元", "江西小炒", "食宝街店"],
+                exact_include_keywords=["凤状元·江西小炒·非遗米粉(食宝街店)"],
+                exclude_keywords=[],
+                required_all_keywords=[],
+                required_context_keywords=["探店", "米粉"],
+                required_location_keywords=["北京", "食宝街店"],
+                required_any_fields=["title", "content", "poi_name"],
+                author_include_keywords=[],
+                author_exclude_keywords=[],
+                author_level_include_keywords=["达人"],
+                min_follower_count=10000,
+                require_poi=True,
+                min_score=8,
+            )
+        ]
+        candidates = [
+            SignalCandidate(
+                content_id="dy-kol-1",
+                platform="douyin",
+                title="食宝街这家凤状元值得去",
+                content="北京探店，这家江西小炒和米粉都在线。",
+                poi_name="凤状元·江西小炒·非遗米粉(食宝街店)",
+                author_name="达人阿青",
+                author_level="探店达人",
+                verified_label="美食达人",
+                follower_count=56000,
+                ip_location="北京",
+                topic_tags=["北京美食"],
+                url="https://example.com/kol-1",
+                published_at=None,
+                like_count=12,
+                favorite_count=0,
+                comment_count=1,
+                share_count=0,
+                raw_payload={},
+            ),
+            SignalCandidate(
+                content_id="dy-kol-2",
+                platform="douyin",
+                title="食宝街这家凤状元值得去",
+                content="北京探店，这家江西小炒和米粉都在线。",
+                poi_name="",
+                author_name="普通用户",
+                author_level="普通用户",
+                verified_label="",
+                follower_count=300,
+                ip_location="北京",
+                topic_tags=["北京美食"],
+                url="https://example.com/kol-2",
+                published_at=None,
+                like_count=12,
+                favorite_count=0,
+                comment_count=1,
+                share_count=0,
+                raw_payload={},
+            ),
+        ]
+
+        matches, rejections = review_candidates(rules, candidates)
+        self.assertEqual([item.content_id for item in matches], ["dy-kol-1"])
+        self.assertTrue(any("缺少POI门店锚点" in item.reason or "粉丝量不足" in item.reason or "作者级别未命中白名单" in item.reason for item in rejections))
 
 
 if __name__ == "__main__":

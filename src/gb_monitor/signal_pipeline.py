@@ -18,6 +18,14 @@ from gb_monitor.storage import Storage
 
 
 SIGNAL_TASK_NAME = "signal_watchboard"
+ATTRIBUTION_METRIC_SPECS = [
+    ("douyin", "traffic_impressions", "抖音曝光"),
+    ("douyin", "realtime_transaction_amount", "抖音成交额"),
+    ("douyin", "realtime_ticket_count", "抖音成单量"),
+    ("meituan", "valid_orders", "美团有效单"),
+    ("eleme", "valid_orders", "闪购有效单"),
+    ("jdwm", "valid_orders", "京东有效单"),
+]
 
 
 @dataclass(slots=True)
@@ -80,6 +88,7 @@ def run_profile_signal_pipeline(
     mark_dispatched: bool = False,
     dedupe_hours: int = 24,
     min_score_override: int | None = None,
+    attribution_window_hours: int = 2,
 ) -> SignalPipelineResult:
     if mode not in {"scheduled", "all"}:
         raise ValueError("mode must be 'scheduled' or 'all'")
@@ -132,6 +141,11 @@ def run_profile_signal_pipeline(
         now=now,
         dedupe_hours=max(dedupe_hours, 0),
     )
+    _annotate_attribution_observations(
+        storage=storage,
+        matches=filtered_matches,
+        window_hours=max(attribution_window_hours, 1),
+    )
     report_text = build_signal_report(now, filtered_matches)
     if matches and not filtered_matches:
         report_text += "\n所有命中内容都在去重窗口内，当前无新增派送。"
@@ -159,3 +173,70 @@ def run_profile_signal_pipeline(
         report_text=report_text,
         board_text=board_text,
     )
+
+
+def _annotate_attribution_observations(
+    storage: Storage,
+    matches: list,
+    window_hours: int,
+) -> None:
+    for match in matches:
+        published_at = _parse_datetime(match.published_at)
+        if published_at is None:
+            continue
+
+        observations: list[str] = []
+        observed = False
+        for platform, metric_key, label in ATTRIBUTION_METRIC_SPECS:
+            before = storage.nearest_metric_value(
+                store_id=match.store_id,
+                platform=platform,
+                metric_key=metric_key,
+                pivot=published_at,
+                direction="before",
+                window_hours=window_hours,
+            )
+            after = storage.nearest_metric_value(
+                store_id=match.store_id,
+                platform=platform,
+                metric_key=metric_key,
+                pivot=published_at,
+                direction="after",
+                window_hours=window_hours,
+            )
+            if before is None or after is None:
+                continue
+            delta = after[0] - before[0]
+            observed = True
+            if delta > 0:
+                observations.append(f"{label}+{_format_metric_delta(delta)}")
+
+        if observations:
+            match.attribution_summary = (
+                f"发布后{window_hours}小时观察窗："
+                + " / ".join(observations)
+                + "（仅为相关波动观察，不代表精确归因）"
+            )
+        elif observed:
+            match.attribution_summary = (
+                f"发布后{window_hours}小时观察窗：未见明显正向波动（仅为相关波动观察，不代表精确归因）"
+            )
+        else:
+            match.attribution_summary = (
+                f"发布后{window_hours}小时观察窗：当前窗口数据不足，暂不能判断引流波动"
+            )
+
+
+def _format_metric_delta(value: float) -> str:
+    if float(value).is_integer():
+        return str(int(value))
+    return f"{value:.2f}".rstrip("0").rstrip(".")
+
+
+def _parse_datetime(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None

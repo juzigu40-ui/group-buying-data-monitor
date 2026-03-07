@@ -256,6 +256,19 @@ gbm profile-signals \
   --profile-dir data/client_profiles/shibaojie \
   --mode all \
   --mark-dispatched \
+  --attribution-window-hours 2 \
+  --board-output data/client_profiles/shibaojie/signal_watchboard.md \
+  --report-output data/client_profiles/shibaojie/signal_report.txt
+```
+
+如果需要给客户导出“当前完整命中快照”，不要复用正式增量派送参数，建议改成：
+
+```bash
+gbm profile-signals \
+  --profile-dir data/client_profiles/shibaojie \
+  --mode all \
+  --dedupe-hours 0 \
+  --attribution-window-hours 2 \
   --board-output data/client_profiles/shibaojie/signal_watchboard.md \
   --report-output data/client_profiles/shibaojie/signal_report.txt
 ```
@@ -270,10 +283,11 @@ gbm signal-board \
 
 说明：
 - 会生成一个适合直接转给客户或贴进飞书/文档的 Markdown 看板
-- 看板会展示平台分布、命中明细、热度、规则说明，以及被过滤掉的噪音样例
+- 看板会展示平台分布、命中明细、达人档案、疑似引流观察、规则说明，以及被过滤掉的噪音样例
 - profile 级链路会优先读取 `signal_inputs/public_xiaohongshu.json`、`signal_inputs/public_douyin.json`、`signal_inputs/public_shipinhao.json`
 - 标准输入文件存在时，不再混用旧的 demo/fallback 文件
 - 正式监测建议带 `--mark-dispatched`，这样去重账本才会记录已发内容
+- 重点达人定向监控可在 `store_signal_rules.json` 里配置：`focus_author_names`、`focus_author_tags`、`focus_verified_labels`、`author_level_include_keywords`、`min_follower_count`、`require_poi`
 
 如果需要把高置信结果直接推到飞书：
 
@@ -309,6 +323,7 @@ gbm profile-usage-guide \
 说明：
 - 客户看到的不是模糊的“OpenClaw+skills”，而是输入规范、规则命中、调度窗口、去重账本和交付文件
 - 如果客户仍希望保留 OpenClaw，建议把它定位为采集/执行引擎；客户日常使用的是本系统产出的看板、报告和交付页
+- 如果客户关心达人内容带来的引流，当前版本支持“发布后经营波动观察”，但不冒充精确归因
 
 ### 运行测试
 

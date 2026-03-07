@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
@@ -55,6 +55,12 @@ class SignalRule:
     required_any_fields: list[str]
     author_include_keywords: list[str]
     author_exclude_keywords: list[str]
+    author_level_include_keywords: list[str] = field(default_factory=list)
+    focus_author_names: list[str] = field(default_factory=list)
+    focus_author_tags: list[str] = field(default_factory=list)
+    focus_verified_labels: list[str] = field(default_factory=list)
+    min_follower_count: int = 0
+    require_poi: bool = False
     min_score: int = 5
 
 
@@ -76,6 +82,9 @@ class SignalCandidate:
     comment_count: int
     share_count: int
     raw_payload: dict[str, Any]
+    verified_label: str = ""
+    follower_count: int = 0
+    author_tags: list[str] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -102,6 +111,11 @@ class SignalMatch:
     matched_fields: list[str]
     reason: str
     raw_payload: dict[str, Any]
+    verified_label: str = ""
+    follower_count: int = 0
+    author_tags: list[str] = field(default_factory=list)
+    focus_author_hits: list[str] = field(default_factory=list)
+    attribution_summary: str = ""
 
 
 @dataclass(slots=True)
@@ -124,3 +138,6 @@ class SignalRejection:
     share_count: int
     reason: str
     raw_payload: dict[str, Any]
+    verified_label: str = ""
+    follower_count: int = 0
+    author_tags: list[str] = field(default_factory=list)

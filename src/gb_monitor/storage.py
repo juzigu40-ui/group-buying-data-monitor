@@ -273,3 +273,60 @@ class Storage:
                 """,
                 rows,
             )
+
+    def nearest_metric_value(
+        self,
+        store_id: str,
+        platform: str,
+        metric_key: str,
+        pivot: datetime,
+        direction: str,
+        window_hours: int,
+    ) -> tuple[float | None, str | None] | None:
+        if direction not in {"before", "after"}:
+            raise ValueError("direction must be before or after")
+
+        lower_bound = datetime.fromtimestamp(pivot.timestamp() - window_hours * 3600, tz=pivot.tzinfo)
+        upper_bound = datetime.fromtimestamp(pivot.timestamp() + window_hours * 3600, tz=pivot.tzinfo)
+        if direction == "before":
+            comparator = "captured_at <= ?"
+            order = "captured_at DESC"
+            params: list[object] = [
+                store_id,
+                platform,
+                metric_key,
+                pivot.isoformat(),
+                lower_bound.isoformat(),
+            ]
+            range_clause = "captured_at >= ?"
+        else:
+            comparator = "captured_at >= ?"
+            order = "captured_at ASC"
+            params = [
+                store_id,
+                platform,
+                metric_key,
+                pivot.isoformat(),
+                upper_bound.isoformat(),
+            ]
+            range_clause = "captured_at <= ?"
+
+        query = f"""
+            SELECT metric_value_num, captured_at
+            FROM metrics
+            WHERE store_id = ?
+              AND platform = ?
+              AND metric_key = ?
+              AND {comparator}
+              AND {range_clause}
+            ORDER BY {order}
+            LIMIT 1
+        """
+        with self.connect() as conn:
+            row = conn.execute(query, params).fetchone()
+        if not row:
+            return None
+        metric_value_num, captured_at = row
+        if metric_value_num is None:
+            return None
+        return float(metric_value_num), str(captured_at)

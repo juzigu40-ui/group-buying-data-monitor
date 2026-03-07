@@ -223,6 +223,7 @@ def build_parser() -> argparse.ArgumentParser:
     profile_signals.add_argument("--mark-dispatched", action="store_true")
     profile_signals.add_argument("--dedupe-hours", type=int, default=24)
     profile_signals.add_argument("--min-score", type=int, default=0)
+    profile_signals.add_argument("--attribution-window-hours", type=int, default=2)
     profile_signals.add_argument("--json", action="store_true")
     profile_signals.add_argument(
         "--report-output",
@@ -483,6 +484,7 @@ def main() -> int:
             mark_dispatched=args.mark_dispatched,
             dedupe_hours=args.dedupe_hours,
             min_score_override=(args.min_score if args.min_score > 0 else None),
+            attribution_window_hours=args.attribution_window_hours,
         )
         if args.report_output:
             report_path = Path(args.report_output)

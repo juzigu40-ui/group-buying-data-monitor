@@ -38,6 +38,12 @@
         "招商",
         "加盟"
       ],
+      "author_level_include_keywords": [],
+      "focus_author_names": [],
+      "focus_author_tags": [],
+      "focus_verified_labels": [],
+      "min_follower_count": 0,
+      "require_poi": false,
       "required_any_fields": [
         "title",
         "content",

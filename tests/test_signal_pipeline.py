@@ -59,6 +59,11 @@ class SignalPipelineTests(unittest.TestCase):
                                 "required_any_fields": ["title", "content", "poi_name"],
                                 "author_include_keywords": [],
                                 "author_exclude_keywords": [],
+                                "focus_author_names": ["北京探店小林"],
+                                "focus_author_tags": ["北京探店"],
+                                "focus_verified_labels": ["探店达人"],
+                                "min_follower_count": 10000,
+                                "require_poi": True,
                                 "min_score": 8,
                             },
                             {
@@ -94,6 +99,9 @@ class SignalPipelineTests(unittest.TestCase):
                                 "poi_name": "凤状元·江西小炒·非遗米粉(食宝街店)",
                                 "author_name": "北京探店小林",
                                 "author_level": "Lv.4",
+                                "verified_label": "探店达人",
+                                "follower_count": 56000,
+                                "author_tags": ["北京探店", "美食博主"],
                                 "ip_location": "北京",
                                 "topic_tags": ["食宝街", "江西小炒"],
                                 "url": "https://example.com/dy/001",
@@ -159,7 +167,16 @@ class SignalPipelineTests(unittest.TestCase):
             self.assertEqual(result.deduped_match_count, 2)
             self.assertIn("门店实时舆情精筛结果", result.report_text)
             self.assertIn("凤状元·江西小炒·非遗米粉(食宝街店)", result.report_text)
+            self.assertIn("认证信息: 探店达人", result.report_text)
+            self.assertIn("粉丝量: 56000", result.report_text)
+            self.assertIn("重点达人命中:", result.report_text)
+            self.assertIn("北京探店小林", result.report_text)
+            self.assertIn("北京探店", result.report_text)
+            self.assertIn("探店达人", result.report_text)
             self.assertIn("# 门店实时舆情看板", result.board_text)
+            self.assertIn("粉丝56000", result.board_text)
+            self.assertIn("重点名单", result.board_text)
+            self.assertIn("当前窗口数据不足", result.board_text)
             self.assertIsNotNone(storage.get_last_success("signal_watchboard"))
 
 

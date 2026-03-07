@@ -37,6 +37,12 @@ def load_signal_rules(path: Path) -> list[SignalRule]:
         ]
         author_include_keywords = _ensure_str_list(item.get("author_include_keywords"))
         author_exclude_keywords = _ensure_str_list(item.get("author_exclude_keywords"))
+        author_level_include_keywords = _ensure_str_list(item.get("author_level_include_keywords"))
+        focus_author_names = _ensure_str_list(item.get("focus_author_names"))
+        focus_author_tags = _ensure_str_list(item.get("focus_author_tags"))
+        focus_verified_labels = _ensure_str_list(item.get("focus_verified_labels"))
+        min_follower_count = _normalize_non_negative_int(item.get("min_follower_count"))
+        require_poi = bool(item.get("require_poi", False))
         min_score = int(item.get("min_score", 5))
 
         if not store_id or not store_name or not platform:
@@ -56,6 +62,12 @@ def load_signal_rules(path: Path) -> list[SignalRule]:
                 required_any_fields=required_any_fields,
                 author_include_keywords=author_include_keywords,
                 author_exclude_keywords=author_exclude_keywords,
+                author_level_include_keywords=author_level_include_keywords,
+                focus_author_names=focus_author_names,
+                focus_author_tags=focus_author_tags,
+                focus_verified_labels=focus_verified_labels,
+                min_follower_count=min_follower_count,
+                require_poi=require_poi,
                 min_score=min_score,
             )
         )
@@ -89,6 +101,9 @@ def load_signal_candidates(path: Path) -> list[SignalCandidate]:
                 poi_name=str(item.get("poi_name", "")).strip(),
                 author_name=str(item.get("author_name", "")).strip(),
                 author_level=str(item.get("author_level", "")).strip(),
+                verified_label=str(item.get("verified_label", "")).strip(),
+                follower_count=_normalize_non_negative_int(item.get("follower_count")),
+                author_tags=_normalize_tag_list(item.get("author_tags") or item.get("account_tags")),
                 ip_location=str(item.get("ip_location", "")).strip(),
                 topic_tags=_normalize_tag_list(item.get("topic_tags") or item.get("hashtags")),
                 url=str(item.get("url", "")).strip(),
@@ -188,6 +203,15 @@ def build_signal_report(now: datetime, matches: list[SignalMatch]) -> str:
             lines.append(f"  作者: {item.author_name}")
         if item.author_level:
             lines.append(f"  发布者级别: {item.author_level}")
+        if item.verified_label:
+            lines.append(f"  认证信息: {item.verified_label}")
+        if item.follower_count > 0:
+            lines.append(f"  粉丝量: {item.follower_count}")
+        if item.author_tags:
+            lines.append(f"  账号标签: {', '.join(item.author_tags)}")
+        lines.append(f"  KOL判定: {_kol_tier(item)}")
+        if item.focus_author_hits:
+            lines.append(f"  重点达人命中: {', '.join(item.focus_author_hits)}")
         if item.ip_location:
             lines.append(f"  IP地域: {item.ip_location}")
         if item.poi_name:
@@ -198,6 +222,8 @@ def build_signal_report(now: datetime, matches: list[SignalMatch]) -> str:
             lines.append(f"  发布时间: {item.published_at}")
         if _engagement_score(item) > 0:
             lines.append(f"  互动: {_engagement_summary(item)}")
+        if item.attribution_summary:
+            lines.append(f"  引流观察: {item.attribution_summary}")
         if item.url:
             lines.append(f"  链接: {item.url}")
         lines.append(f"  说明: {item.reason}")
@@ -262,6 +288,15 @@ def build_signal_dashboard(
         author_bits = [item.author_name or "-"]
         if item.author_level:
             author_bits.append(item.author_level)
+        if item.verified_label:
+            author_bits.append(item.verified_label)
+        if item.follower_count > 0:
+            author_bits.append(f"粉丝{item.follower_count}")
+        kol_tier = _kol_tier(item)
+        if kol_tier != "普通账号":
+            author_bits.append(kol_tier)
+        if item.focus_author_hits:
+            author_bits.append("重点达人命中")
         if item.ip_location:
             author_bits.append(item.ip_location)
         author = _markdown_cell(" / ".join(author_bits))
@@ -270,6 +305,16 @@ def build_signal_dashboard(
         lines.append(
             f"| {item.platform} | {item.confidence} | {item.score} | {title} | {author} | {published_at} | {heat} | {reason} |"
         )
+        if item.author_tags:
+            lines.append(
+                f"| 达人标签 | - | - | {_markdown_cell(', '.join(item.author_tags))} | - | - | - | - |"
+            )
+        if item.focus_author_hits:
+            lines.append(
+                f"| 重点名单 | - | - | {_markdown_cell(', '.join(item.focus_author_hits))} | - | - | - | - |"
+            )
+        if item.attribution_summary:
+            lines.append(f"| 经营观察 | - | - | {_markdown_cell(item.attribution_summary)} | - | - | - | - |")
 
     if rejections:
         lines.extend(_build_rejection_section(rejections))
@@ -291,6 +336,9 @@ def _evaluate_single(
         "content": candidate.content,
         "poi_name": candidate.poi_name,
         "author_name": candidate.author_name,
+        "author_level": candidate.author_level,
+        "verified_label": candidate.verified_label,
+        "author_tags": " ".join(candidate.author_tags),
         "topic_tags": " ".join(candidate.topic_tags),
         "ip_location": candidate.ip_location,
     }
@@ -309,6 +357,34 @@ def _evaluate_single(
     author_include_hits = _find_hits(rule.author_include_keywords, {"author_name": candidate.author_name})
     if rule.author_include_keywords and not author_include_hits:
         return None, "作者未命中白名单"
+
+    author_level_hits = _find_hits(
+        rule.author_level_include_keywords,
+        {"author_level": candidate.author_level, "verified_label": candidate.verified_label},
+    )
+    if rule.author_level_include_keywords and not author_level_hits:
+        return None, "作者级别未命中白名单"
+
+    focus_author_name_hits = _find_hits(rule.focus_author_names, {"author_name": candidate.author_name})
+    focus_author_tag_hits = _find_hits(
+        rule.focus_author_tags,
+        {
+            "author_tags": " ".join(candidate.author_tags),
+            "author_level": candidate.author_level,
+            "verified_label": candidate.verified_label,
+        },
+    )
+    focus_verified_hits = _find_hits(
+        rule.focus_verified_labels,
+        {"verified_label": candidate.verified_label},
+    )
+    focus_author_hits = _merge_hits(focus_author_name_hits, focus_author_tag_hits, focus_verified_hits)
+
+    if rule.min_follower_count > 0 and candidate.follower_count < rule.min_follower_count:
+        return None, f"粉丝量不足：{candidate.follower_count} < {rule.min_follower_count}"
+
+    if rule.require_poi and not candidate.poi_name:
+        return None, "缺少POI门店锚点"
 
     exact_hits = _find_hits(rule.exact_include_keywords, field_values)
     core_terms = [rule.store_name, *rule.include_keywords]
@@ -341,7 +417,14 @@ def _evaluate_single(
     if rule.required_location_keywords and not has_strong_store_hit and not location_hits:
         return None, "缺少门店位置上下文"
 
-    combined_hits = _merge_hits(total_hits, exact_hits, context_hits, location_hits)
+    combined_hits = _merge_hits(
+        total_hits,
+        exact_hits,
+        context_hits,
+        location_hits,
+        author_level_hits,
+        focus_author_hits,
+    )
     matched_terms = sorted({term for hits in combined_hits.values() for term in hits})
     matched_terms.extend(
         sorted({term for hits in author_include_hits.values() for term in hits if term not in matched_terms})
@@ -349,13 +432,34 @@ def _evaluate_single(
     matched_fields = sorted(combined_hits)
     if author_include_hits and "author_name" not in matched_fields:
         matched_fields.append("author_name")
-    score = _score_match(rule, candidate, total_hits, exact_hits, context_hits, location_hits, author_include_hits)
+    score = _score_match(
+        rule,
+        candidate,
+        total_hits,
+        exact_hits,
+        context_hits,
+        location_hits,
+        author_include_hits,
+        author_level_hits,
+        focus_author_hits,
+    )
     min_score = min_score_override if min_score_override is not None else rule.min_score
     if score < min_score:
         return None, f"综合分过低：{score} < {min_score}"
 
     confidence = _confidence_for_score(score)
-    reason = _build_reason(rule, candidate, total_hits, exact_hits, context_hits, location_hits, author_include_hits, score)
+    reason = _build_reason(
+        rule,
+        candidate,
+        total_hits,
+        exact_hits,
+        context_hits,
+        location_hits,
+        author_include_hits,
+        author_level_hits,
+        focus_author_hits,
+        score,
+    )
     return SignalMatch(
         store_id=rule.store_id,
         store_name=rule.store_name,
@@ -366,6 +470,9 @@ def _evaluate_single(
         poi_name=candidate.poi_name,
         author_name=candidate.author_name,
         author_level=candidate.author_level,
+        verified_label=candidate.verified_label,
+        follower_count=candidate.follower_count,
+        author_tags=candidate.author_tags,
         ip_location=candidate.ip_location,
         topic_tags=candidate.topic_tags,
         published_at=candidate.published_at,
@@ -377,6 +484,7 @@ def _evaluate_single(
         confidence=confidence,
         matched_terms=matched_terms,
         matched_fields=matched_fields,
+        focus_author_hits=sorted({term for values in focus_author_hits.values() for term in values}),
         reason=reason,
         raw_payload=candidate.raw_payload,
     ), None
@@ -390,6 +498,8 @@ def _score_match(
     context_hits: dict[str, list[str]],
     location_hits: dict[str, list[str]],
     author_include_hits: dict[str, list[str]],
+    author_level_hits: dict[str, list[str]],
+    focus_author_hits: dict[str, list[str]],
 ) -> int:
     score = 0
     unique_terms = {term for values in hits.values() for term in values}
@@ -414,6 +524,20 @@ def _score_match(
         score += min(2, len({term for values in location_hits.values() for term in values}))
     if author_include_hits:
         score += 2
+    if author_level_hits:
+        score += 2
+    if focus_author_hits:
+        score += 5
+    if candidate.verified_label:
+        score += 1
+    if candidate.follower_count >= 100000:
+        score += 3
+    elif candidate.follower_count >= 10000:
+        score += 2
+    elif candidate.follower_count >= 1000:
+        score += 1
+    if rule.require_poi and candidate.poi_name:
+        score += 2
     score += _engagement_bonus(candidate)
     score += _freshness_bonus(candidate)
     return score
@@ -427,6 +551,8 @@ def _build_reason(
     context_hits: dict[str, list[str]],
     location_hits: dict[str, list[str]],
     author_include_hits: dict[str, list[str]],
+    author_level_hits: dict[str, list[str]],
+    focus_author_hits: dict[str, list[str]],
     score: int,
 ) -> str:
     fragments: list[str] = []
@@ -446,6 +572,14 @@ def _build_reason(
         fragments.append("多字段同时命中")
     if author_include_hits:
         fragments.append("作者命中白名单")
+    if author_level_hits:
+        fragments.append("作者级别命中白名单")
+    if focus_author_hits:
+        fragments.append("命中重点达人名单")
+    if candidate.verified_label:
+        fragments.append("作者存在认证信息")
+    if candidate.follower_count >= 1000:
+        fragments.append(f"粉丝量{candidate.follower_count}")
     freshness_fragment = _freshness_reason(candidate)
     if freshness_fragment:
         fragments.append(freshness_fragment)
@@ -524,6 +658,9 @@ def _collapse_ambiguous_matches(
                         poi_name=best.poi_name,
                         author_name=best.author_name,
                         author_level=best.author_level,
+                        verified_label=best.verified_label,
+                        follower_count=best.follower_count,
+                        author_tags=best.author_tags,
                         ip_location=best.ip_location,
                         topic_tags=best.topic_tags,
                         published_at=best.published_at,
@@ -552,6 +689,9 @@ def _build_rejection(rule: SignalRule, candidate: SignalCandidate, reason: str) 
         poi_name=candidate.poi_name,
         author_name=candidate.author_name,
         author_level=candidate.author_level,
+        verified_label=candidate.verified_label,
+        follower_count=candidate.follower_count,
+        author_tags=candidate.author_tags,
         ip_location=candidate.ip_location,
         topic_tags=candidate.topic_tags,
         published_at=candidate.published_at,
@@ -578,6 +718,8 @@ def _build_rejection_section(rejections: list[SignalRejection]) -> list[str]:
         author_bits = [item.author_name or "-"]
         if item.author_level:
             author_bits.append(item.author_level)
+        if item.verified_label:
+            author_bits.append(item.verified_label)
         if item.ip_location:
             author_bits.append(item.ip_location)
         author = _markdown_cell(" / ".join(author_bits))
@@ -637,6 +779,19 @@ def _engagement_reason(candidate: SignalCandidate) -> str:
     if bonus == 1:
         return "已有初始互动"
     return ""
+
+
+def _kol_tier(candidate: SignalCandidate | SignalMatch | SignalRejection) -> str:
+    follower_count = int(getattr(candidate, "follower_count", 0))
+    verified_label = str(getattr(candidate, "verified_label", "")).strip()
+    author_level = str(getattr(candidate, "author_level", "")).strip()
+    author_tags = [str(item).strip() for item in getattr(candidate, "author_tags", [])]
+    tier_text = " ".join([verified_label, author_level, *author_tags]).lower()
+    if follower_count >= 100000 or verified_label:
+        return "重点达人"
+    if follower_count >= 10000 or any(token in tier_text for token in ("达人", "kol", "博主", "探店")):
+        return "达人账号"
+    return "普通账号"
 
 
 def _confidence_for_score(score: int) -> str:
