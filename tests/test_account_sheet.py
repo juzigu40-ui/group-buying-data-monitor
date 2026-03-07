@@ -19,6 +19,7 @@ from gb_monitor.account_sheet import (
     build_store_registry_payload,
     build_verification_plan_payload,
     infer_auth_mode,
+    import_account_sheet,
     extract_store_keywords,
     needs_verification,
     next_verification_target,
@@ -29,6 +30,62 @@ from gb_monitor.account_sheet import (
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import json
+from zipfile import ZipFile
+
+
+def _write_minimal_account_sheet_xlsx(path: Path) -> None:
+    headers = ["平台", "门店名称", "城市", "店铺链接", "账号", "密码", "登录方式", "二次验证"]
+    row = [
+        "抖音",
+        "凤状元·江西小炒·非遗米粉(食宝街店)",
+        "北京",
+        "https://example.com/store",
+        "13311549056",
+        "secret",
+        "验证码登录",
+        "无",
+    ]
+    shared_strings = headers + row
+
+    def sheet_row(values: list[str], row_num: int, start_idx: int) -> str:
+        cells = []
+        for idx, _value in enumerate(values):
+            cells.append(f'<c r="{chr(65 + idx)}{row_num}" t="s"><v>{start_idx + idx}</v></c>')
+        return f'<row r="{row_num}">{"".join(cells)}</row>'
+
+    workbook_xml = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+ xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets>
+    <sheet name="Sheet1" sheetId="1" r:id="rId1"/>
+  </sheets>
+</workbook>
+"""
+    rels_xml = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+</Relationships>
+"""
+    sheet_xml = f"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetData>
+    {sheet_row(headers, 1, 0)}
+    {sheet_row(row, 2, len(headers))}
+  </sheetData>
+</worksheet>
+"""
+    shared_strings_xml = (
+        """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="{count}" uniqueCount="{count}">
+""".format(count=len(shared_strings))
+        + "".join(f"<si><t>{value}</t></si>" for value in shared_strings)
+        + "\n</sst>\n"
+    )
+    with ZipFile(path, "w") as archive:
+        archive.writestr("xl/workbook.xml", workbook_xml)
+        archive.writestr("xl/_rels/workbook.xml.rels", rels_xml)
+        archive.writestr("xl/worksheets/sheet1.xml", sheet_xml)
+        archive.writestr("xl/sharedStrings.xml", shared_strings_xml)
 
 
 class AccountSheetTests(unittest.TestCase):
@@ -651,6 +708,43 @@ class AccountSheetTests(unittest.TestCase):
             self.assertIn("OpenClaw 可以继续保留，但它的角色是采集和执行引擎", text)
             self.assertIn("profile-signals", text)
             self.assertIn("client_usage_guide.md", text)
+            self.assertIn("--mark-dispatched", text)
+
+    def test_import_account_sheet_preserves_existing_signal_inputs_and_snapshots(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            xlsx_path = tmp / "account.xlsx"
+            _write_minimal_account_sheet_xlsx(xlsx_path)
+
+            profile_dir = tmp / "profile"
+            snapshots_dir = profile_dir / "snapshots"
+            signal_inputs_dir = profile_dir / "signal_inputs"
+            snapshots_dir.mkdir(parents=True)
+            signal_inputs_dir.mkdir(parents=True)
+
+            existing_snapshot = {
+                "captured_at": "2026-03-07T17:56:00+08:00",
+                "stores": [{"store_id": "keep", "store_name": "keep", "metrics": {"valid_orders": 19}}],
+            }
+            existing_signal_input = {
+                "platform": "douyin",
+                "items": [{"content_id": "keep-1", "title": "keep", "content": "keep", "author_name": "keep", "url": "https://example.com"}],
+            }
+            (snapshots_dir / "delivery_meituan.json").write_text(
+                json.dumps(existing_snapshot, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            (signal_inputs_dir / "public_douyin.json").write_text(
+                json.dumps(existing_signal_input, ensure_ascii=False),
+                encoding="utf-8",
+            )
+
+            import_account_sheet(xlsx_path=xlsx_path, profile_dir=profile_dir)
+
+            snapshot_after = json.loads((snapshots_dir / "delivery_meituan.json").read_text(encoding="utf-8"))
+            signal_after = json.loads((signal_inputs_dir / "public_douyin.json").read_text(encoding="utf-8"))
+            self.assertEqual(snapshot_after, existing_snapshot)
+            self.assertEqual(signal_after, existing_signal_input)
 
 
 if __name__ == "__main__":

@@ -255,6 +255,7 @@ gbm score-signals --input examples/douyin_signal_candidates.json
 gbm profile-signals \
   --profile-dir data/client_profiles/shibaojie \
   --mode all \
+  --mark-dispatched \
   --board-output data/client_profiles/shibaojie/signal_watchboard.md \
   --report-output data/client_profiles/shibaojie/signal_report.txt
 ```
@@ -272,6 +273,7 @@ gbm signal-board \
 - 看板会展示平台分布、命中明细、热度、规则说明，以及被过滤掉的噪音样例
 - profile 级链路会优先读取 `signal_inputs/public_xiaohongshu.json`、`signal_inputs/public_douyin.json`、`signal_inputs/public_shipinhao.json`
 - 标准输入文件存在时，不再混用旧的 demo/fallback 文件
+- 正式监测建议带 `--mark-dispatched`，这样去重账本才会记录已发内容
 
 如果需要把高置信结果直接推到飞书：
 

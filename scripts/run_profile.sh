@@ -44,6 +44,7 @@ if [ -f "$SIGNAL_RULES" ]; then
   PYTHONPATH=src python3 -m gb_monitor.cli profile-signals \
     --profile-dir "$PROFILE_DIR" \
     --mode all \
+    --mark-dispatched \
     --board-output "${PROFILE_DIR}/signal_watchboard.md" \
     --report-output "${PROFILE_DIR}/signal_report.txt"
   PYTHONPATH=src python3 -m gb_monitor.cli profile-signal-deliverable \

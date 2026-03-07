@@ -69,17 +69,22 @@ def import_account_sheet(xlsx_path: Path, profile_dir: Path) -> dict[str, Path]:
     execution_board_path.write_text(execution_board_text, encoding="utf-8")
     snapshots_dir.mkdir(parents=True, exist_ok=True)
     for filename, payload in snapshot_payloads.items():
-        (snapshots_dir / filename).write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
-        )
+        target_path = snapshots_dir / filename
+        if not target_path.exists():
+            target_path.write_text(
+                json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
     signal_inputs_dir.mkdir(parents=True, exist_ok=True)
-    signal_input_readme_path.write_text(signal_input_readme, encoding="utf-8")
+    if not signal_input_readme_path.exists():
+        signal_input_readme_path.write_text(signal_input_readme, encoding="utf-8")
     for filename, payload in signal_input_payloads.items():
-        (signal_inputs_dir / filename).write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
-        )
+        target_path = signal_inputs_dir / filename
+        if not target_path.exists():
+            target_path.write_text(
+                json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
 
     return {
         "stores_registry": registry_path,
@@ -872,7 +877,7 @@ def build_profile_usage_guide(profile_dir: Path) -> str:
         "## 执行同学怎么跑",
         "",
         f"1. 跑整店链路：`./scripts/run_profile.sh {profile_path}`",
-        f"2. 只跑实时舆情：`PYTHONPATH=src python3 -m gb_monitor.cli profile-signals --profile-dir '{profile_path}' --mode all --board-output '{profile_path}/signal_watchboard.md' --report-output '{profile_path}/signal_report.txt'`",
+        f"2. 只跑实时舆情：`PYTHONPATH=src python3 -m gb_monitor.cli profile-signals --profile-dir '{profile_path}' --mode all --mark-dispatched --board-output '{profile_path}/signal_watchboard.md' --report-output '{profile_path}/signal_report.txt'`",
         f"3. 生成舆情说明页：`PYTHONPATH=src python3 -m gb_monitor.cli profile-signal-deliverable --profile-dir '{profile_path}' --output '{profile_path}/signal_delivery_explainer.md'`",
         f"4. 生成客户使用说明：`PYTHONPATH=src python3 -m gb_monitor.cli profile-usage-guide --profile-dir '{profile_path}' --output '{profile_path}/client_usage_guide.md'`",
         "",
