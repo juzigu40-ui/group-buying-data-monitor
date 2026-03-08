@@ -244,6 +244,18 @@ gbm latest-metrics \
 - 不需要再去改全局 `examples/*.json`
 - 如果 `.env` 里已经配置 `GBM_FEISHU_WEBHOOK`，这条命令会自动把运行摘要和实时舆情结果推送到飞书
 
+### 一条命令做验收演示
+
+```bash
+./scripts/run_acceptance_demo.sh data/client_profiles/shibaojie --require-feishu
+```
+
+说明：
+- 会先做 profile 自检
+- 会先打一条飞书测试消息
+- 会再跑整店链路并检查交付文件是否生成
+- 适合给客户演示“这套系统已经跑通”
+
 ### 运行门店实时舆情精筛
 
 ```bash
