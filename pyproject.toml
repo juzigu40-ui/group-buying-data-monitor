@@ -15,6 +15,7 @@ dependencies = []
 
 [project.scripts]
 gbm = "gb_monitor.cli:main"
+gbm-control-center = "gb_monitor.control_center:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

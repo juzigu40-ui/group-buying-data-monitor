@@ -8,5 +8,5 @@ cd "$REPO_DIR"
 ./scripts/install_local.sh
 
 echo
-echo "下一步：双击 scripts/open_common_settings.command 填飞书 webhook 和时间段。"
+echo "下一步：双击 scripts/open_control_center.command 打开控制台。"
 read -r -p "按回车键关闭窗口..."
