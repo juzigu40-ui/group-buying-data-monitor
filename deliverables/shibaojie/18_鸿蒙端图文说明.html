@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>鸿蒙端协助说明</title>
+  <style>
+    :root {
+      --bg: #f4f7fb;
+      --card: #ffffff;
+      --line: #d9e3f0;
+      --text: #142136;
+      --muted: #5f6d85;
+      --accent: #1266ff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "PingFang SC", "HarmonyOS Sans SC", "Microsoft YaHei", sans-serif;
+      color: var(--text);
+      background: linear-gradient(180deg, #eef3fb 0%, #f7f9fc 100%);
+    }
+    .page {
+      max-width: 820px;
+      margin: 0 auto;
+      padding: 20px 14px 40px;
+    }
+    .hero, .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      box-shadow: 0 10px 30px rgba(33, 61, 104, 0.08);
+    }
+    .hero {
+      padding: 22px 18px;
+      margin-bottom: 14px;
+    }
+    .hero h1 {
+      margin: 0 0 10px;
+      font-size: 28px;
+    }
+    .hero p {
+      margin: 0;
+      line-height: 1.7;
+      color: var(--muted);
+      font-size: 15px;
+    }
+    .grid {
+      display: grid;
+      gap: 14px;
+    }
+    .card {
+      padding: 18px 16px;
+    }
+    .card h2 {
+      margin: 0 0 12px;
+      font-size: 18px;
+    }
+    .tip {
+      margin: 0 0 10px;
+      color: var(--muted);
+      line-height: 1.7;
+      font-size: 14px;
+    }
+    ol, ul {
+      margin: 0;
+      padding-left: 22px;
+      line-height: 1.8;
+      font-size: 15px;
+    }
+    .pill {
+      display: inline-block;
+      padding: 5px 10px;
+      border-radius: 999px;
+      background: #edf4ff;
+      color: var(--accent);
+      border: 1px solid #d4e3ff;
+      font-size: 13px;
+      margin-right: 8px;
+      margin-bottom: 8px;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="hero">
+      <h1>鸿蒙端协助说明</h1>
+      <p>第一版不是让鸿蒙手机本机跑系统，而是让鸿蒙手机负责飞书接入、结果查看、验证码配合和验收确认。真正运行系统的机器，仍然是 Windows 电脑。</p>
+    </div>
+    <div class="grid">
+      <div class="card">
+        <h2>当前分工</h2>
+        <div class="pill">Windows 运行</div>
+        <div class="pill">鸿蒙查看</div>
+        <div class="pill">飞书接收</div>
+        <div class="pill">验证码配合</div>
+        <p class="tip">这套分工的目的，是让第一版先稳定跑通，而不是把风险压到鸿蒙本机部署上。</p>
+      </div>
+      <div class="card">
+        <h2>鸿蒙端第一步</h2>
+        <ol>
+          <li>打开飞书</li>
+          <li>点底部“消息”</li>
+          <li>进入要收系统消息的那个群</li>
+          <li>打开群设置</li>
+          <li>找到“群机器人”</li>
+          <li>添加“自定义机器人”</li>
+          <li>把 webhook 地址发回来</li>
+        </ol>
+      </div>
+      <div class="card">
+        <h2>鸿蒙端日常看什么</h2>
+        <ul>
+          <li>飞书有没有收到测试消息</li>
+          <li>飞书有没有收到正式监测结果</li>
+          <li>哪个门店今天 KPI 未达标</li>
+          <li>哪个平台当前需要补登录</li>
+          <li>今日和昨日是否有变化</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h2>如果平台需要验证码</h2>
+        <p class="tip">鸿蒙端不需要自己研究脚本，只需要看验证码并协助一次首次登录。后面会优先复用 Windows 电脑本地保存的登录状态。</p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
