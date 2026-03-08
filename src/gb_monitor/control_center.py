@@ -432,10 +432,10 @@ class ControlCenterApp:
 
         self._build_basic_settings(left)
         self._build_schedule_settings(right)
+        self._build_actions(container)
         self._build_registry_bindings(container)
         self._build_session_bindings(container)
         self._build_store_targets(container)
-        self._build_actions(container)
         self._build_output(container)
 
     def _build_summary_banner(self, parent: ttk.Frame) -> None:

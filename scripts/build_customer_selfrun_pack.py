@@ -50,6 +50,26 @@ WINDOWS_SCRIPT_ITEMS = [
     "scripts/run_acceptance_demo.bat",
 ]
 
+MAC_ROOT_ITEMS = [
+    "双击这里启动系统（Mac）.command",
+    "RUN_ME_FIRST.txt",
+    ".env.example",
+    "pyproject.toml",
+    "README.md",
+]
+
+MAC_SCRIPT_ITEMS = [
+    "scripts/start_mac_runtime.command",
+    "scripts/install_local.command",
+    "scripts/install_local.sh",
+    "scripts/open_control_center.command",
+    "scripts/open_common_settings.command",
+    "scripts/run_acceptance_demo.command",
+    "scripts/run_acceptance_demo.sh",
+    "scripts/run_profile.sh",
+    "scripts/resolve_python_macos.sh",
+]
+
 
 def should_skip(path: Path) -> bool:
     parts = path.parts
@@ -78,7 +98,13 @@ def copy_item(src: Path, dst: Path) -> None:
     shutil.copy2(src, dst)
 
 
-def build_pack(profile_name: str, bundle_name: str, zip_output: Path, windows_only: bool = False) -> Path:
+def build_pack(
+    profile_name: str,
+    bundle_name: str,
+    zip_output: Path,
+    windows_only: bool = False,
+    mac_only: bool = False,
+) -> Path:
     profile_dir = ROOT / "data" / "client_profiles" / profile_name
     if not profile_dir.exists():
         raise FileNotFoundError(f"profile not found: {profile_dir}")
@@ -92,6 +118,10 @@ def build_pack(profile_name: str, bundle_name: str, zip_output: Path, windows_on
         items = [ROOT / item for item in WINDOWS_ROOT_ITEMS]
         items.extend(ROOT / item for item in WINDOWS_SCRIPT_ITEMS)
         items.append(ROOT / "src" / "gb_monitor")
+    elif mac_only:
+        items = [ROOT / item for item in MAC_ROOT_ITEMS]
+        items.extend(ROOT / item for item in MAC_SCRIPT_ITEMS)
+        items.append(ROOT / "src" / "gb_monitor")
     else:
         items = [
             ROOT / "pyproject.toml",
@@ -99,6 +129,7 @@ def build_pack(profile_name: str, bundle_name: str, zip_output: Path, windows_on
             ROOT / "README.md",
             ROOT / "RUN_ME_FIRST.txt",
             ROOT / "双击这里启动系统（Windows）.bat",
+            ROOT / "双击这里启动系统（Mac）.command",
             ROOT / "1_先双击安装.command",
             ROOT / "2_再双击打开控制台.command",
             ROOT / "3_需要时再双击运行验收.command",
@@ -147,6 +178,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Build a simpler Windows-only pack with a single visible launcher",
     )
+    parser.add_argument(
+        "--mac-only",
+        action="store_true",
+        help="Build a simpler Mac-only pack with a single visible launcher",
+    )
     return parser
 
 
@@ -158,6 +194,7 @@ def main() -> int:
         bundle_name=args.bundle_name,
         zip_output=zip_output,
         windows_only=args.windows_only,
+        mac_only=args.mac_only,
     )
     print(f"pack_ready=True")
     print(f"zip_output={result}")

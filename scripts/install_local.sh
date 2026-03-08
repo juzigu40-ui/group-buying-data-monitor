@@ -4,22 +4,13 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT_DIR"
 
-if ! command -v python3 >/dev/null 2>&1; then
+if ! PYTHON_BIN="$(./scripts/resolve_python_macos.sh)"; then
   echo "install_ready=False"
-  echo "error=missing_python3"
+  echo "error=missing_python311_with_tkinter"
   exit 1
 fi
 
-if [ ! -d ".venv" ]; then
-  python3 -m venv .venv
-  echo "venv_created=.venv"
-else
-  echo "venv_exists=.venv"
-fi
-
-source .venv/bin/activate
-python -m pip install -U pip >/dev/null 2>&1
-pip install -e .
+echo "python_bin=$PYTHON_BIN"
 
 if [ ! -f ".env" ]; then
   cp .env.example .env
@@ -27,6 +18,9 @@ if [ ! -f ".env" ]; then
 else
   echo "env_exists=.env"
 fi
+
+mkdir -p auth
+echo "auth_dir=auth"
 
 echo "install_ready=True"
 echo "next_step=edit_.env_then_run_acceptance_demo"

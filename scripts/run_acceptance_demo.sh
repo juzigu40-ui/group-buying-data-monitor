@@ -19,16 +19,22 @@ if [ -f .env ]; then
   set +a
 fi
 
+if ! PYTHON_BIN="$(./scripts/resolve_python_macos.sh)"; then
+  echo "acceptance_ready=False"
+  echo "error=missing_python311_with_tkinter"
+  exit 1
+fi
+
 echo "acceptance_step=readiness_check"
 READINESS_ARGS=(--profile-dir "$PROFILE_DIR")
 if [ "$REQUIRE_FEISHU" -eq 1 ]; then
   READINESS_ARGS+=(--require-feishu)
 fi
-PYTHONPATH=src python3 -m gb_monitor.cli profile-readiness "${READINESS_ARGS[@]}"
+PYTHONPATH=src "$PYTHON_BIN" -m gb_monitor.cli profile-readiness "${READINESS_ARGS[@]}"
 
 if [ "$REQUIRE_FEISHU" -eq 1 ]; then
   echo "acceptance_step=feishu_ping"
-  PYTHONPATH=src python3 -m gb_monitor.cli feishu-ping
+  PYTHONPATH=src "$PYTHON_BIN" -m gb_monitor.cli feishu-ping
 fi
 
 echo "acceptance_step=full_run"

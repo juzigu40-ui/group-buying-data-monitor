@@ -18,6 +18,15 @@ if [ -f .env ]; then
   set +a
 fi
 
+if [ -f "./scripts/resolve_python_macos.sh" ]; then
+  if ! PYTHON_BIN="$(./scripts/resolve_python_macos.sh)"; then
+    echo "error=missing_python311_with_tkinter" >&2
+    exit 1
+  fi
+else
+  PYTHON_BIN="python3"
+fi
+
 FEISHU_ENABLED=0
 if [ -n "${GBM_FEISHU_WEBHOOK:-}" ]; then
   FEISHU_ENABLED=1
@@ -45,16 +54,16 @@ if [ "$FEISHU_ENABLED" -eq 1 ]; then
   RUN_ARGS=(--mode all)
 fi
 
-PYTHONPATH=src python3 -m gb_monitor.cli init-db
+PYTHONPATH=src "$PYTHON_BIN" -m gb_monitor.cli init-db
 READINESS_ARGS=(--profile-dir "$PROFILE_DIR")
 if [ "$FEISHU_ENABLED" -eq 1 ]; then
   READINESS_ARGS+=(--require-feishu)
 fi
-PYTHONPATH=src python3 -m gb_monitor.cli profile-readiness "${READINESS_ARGS[@]}"
-PYTHONPATH=src python3 -m gb_monitor.cli validate-registry --registry "$STORE_REGISTRY"
-PYTHONPATH=src python3 -m gb_monitor.cli run "${RUN_ARGS[@]}"
-PYTHONPATH=src python3 -m gb_monitor.cli report --hours 24
-PYTHONPATH=src python3 -m gb_monitor.cli profile-deliverable \
+PYTHONPATH=src "$PYTHON_BIN" -m gb_monitor.cli profile-readiness "${READINESS_ARGS[@]}"
+PYTHONPATH=src "$PYTHON_BIN" -m gb_monitor.cli validate-registry --registry "$STORE_REGISTRY"
+PYTHONPATH=src "$PYTHON_BIN" -m gb_monitor.cli run "${RUN_ARGS[@]}"
+PYTHONPATH=src "$PYTHON_BIN" -m gb_monitor.cli report --hours 24
+PYTHONPATH=src "$PYTHON_BIN" -m gb_monitor.cli profile-deliverable \
   --profile-dir "$PROFILE_DIR" \
   --output "${PROFILE_DIR}/single_store_deliverable.md"
 
@@ -70,16 +79,16 @@ if [ -f "$SIGNAL_RULES" ]; then
     SIGNAL_ARGS+=(--notify)
   fi
 
-  SIGNAL_OUTPUT="$(PYTHONPATH=src python3 -m gb_monitor.cli profile-signals "${SIGNAL_ARGS[@]}")"
+  SIGNAL_OUTPUT="$(PYTHONPATH=src "$PYTHON_BIN" -m gb_monitor.cli profile-signals "${SIGNAL_ARGS[@]}")"
   printf '%s\n' "$SIGNAL_OUTPUT"
   if [ "$FEISHU_ENABLED" -eq 1 ] && ! printf '%s\n' "$SIGNAL_OUTPUT" | grep -q '^delivered=True$'; then
     echo "error=feishu_signal_delivery_failed" >&2
     exit 1
   fi
-  PYTHONPATH=src python3 -m gb_monitor.cli profile-signal-deliverable \
+  PYTHONPATH=src "$PYTHON_BIN" -m gb_monitor.cli profile-signal-deliverable \
     --profile-dir "$PROFILE_DIR" \
     --output "${PROFILE_DIR}/signal_delivery_explainer.md"
-  PYTHONPATH=src python3 -m gb_monitor.cli profile-usage-guide \
+  PYTHONPATH=src "$PYTHON_BIN" -m gb_monitor.cli profile-usage-guide \
     --profile-dir "$PROFILE_DIR" \
     --output "${PROFILE_DIR}/client_usage_guide.md"
 fi
