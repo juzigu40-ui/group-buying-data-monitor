@@ -419,7 +419,7 @@ class ControlCenterApp:
         intro = (
             "先保存配置，再点按钮运行。验证码仍在平台登录页里输入；"
             "客户不需要手动找会话文件。系统默认把登录状态绑定在当前这台部署电脑上，"
-            "控制台只负责飞书、时间段、频率、门店平台绑定、门店目标和一键安装/验收。"
+            "控制台只负责飞书、时间段、频率、门店平台绑定、门店目标和一键检查/验收。"
         )
         ttk.Label(container, text=intro, wraplength=940, justify="left").pack(anchor="w", pady=(0, 10))
 
@@ -616,7 +616,7 @@ class ControlCenterApp:
         frame.pack(fill="x", pady=(0, 12))
         buttons: list[tuple[str, Callable[[], None]]] = [
             ("保存配置", self.save_settings),
-            ("一键安装", lambda: self.run_task("安装环境", self.install_environment)),
+            ("一键检查", lambda: self.run_task("检查环境", self.install_environment)),
             ("测试飞书", lambda: self.run_task("测试飞书", self.test_feishu)),
             ("运行验收", lambda: self.run_task("运行验收", self.run_acceptance)),
             ("打开结果目录", self.open_results),
@@ -631,7 +631,7 @@ class ControlCenterApp:
         frame.pack(fill="both", expand=True)
         self.output = tk.Text(frame, height=20, wrap="word")
         self.output.pack(fill="both", expand=True)
-        self.output.insert("end", "控制台已启动。建议先点“保存配置”，再点“一键安装”。\n")
+        self.output.insert("end", "控制台已启动。建议先点“保存配置”，再点“一键检查”。\n")
         self.output.configure(state="disabled")
 
     def _append_output(self, text: str) -> None:
@@ -778,14 +778,11 @@ class ControlCenterApp:
         threading.Thread(target=runner, daemon=True).start()
 
     def install_environment(self) -> None:
-        system_python = Path(sys.executable)
-        venv_dir = self.root_dir / ".venv"
-        if not venv_dir.exists():
-            self._run_command([str(system_python), "-m", "venv", ".venv"], env=os.environ.copy())
-        python_path = resolve_python(self.root_dir)
-        self._run_command([str(python_path), "-m", "pip", "install", "-U", "pip"], env=os.environ.copy())
-        self._run_command([str(python_path), "-m", "pip", "install", "-e", "."], env=os.environ.copy())
+        python_path = Path(sys.executable)
+        self._run_command([str(python_path), "--version"], env=os.environ.copy())
+        self._run_command([str(python_path), "-c", "import tkinter"], env=os.environ.copy())
         ensure_env_file(self.env_path, self.root_dir / ".env.example")
+        (self.root_dir / "auth").mkdir(parents=True, exist_ok=True)
 
     def test_feishu(self) -> None:
         env = build_runtime_env(self.root_dir, self.profile_dir, self.env_path)
