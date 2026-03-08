@@ -3,11 +3,14 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
+import socket
 import shutil
 import subprocess
 import sys
 import threading
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from queue import Empty, Queue
 from typing import Callable
@@ -38,6 +41,18 @@ class PlatformBindingConfig:
     account_alias: str
     login_owner: str
     enabled: bool
+
+
+@dataclass(slots=True)
+class SessionBindingConfig:
+    store_id: str
+    store_name: str
+    platform: str
+    machine_alias: str
+    session_file: str
+    status: str
+    last_login_at: str
+    note: str
 
 
 ENV_FIELD_ORDER = [
@@ -72,6 +87,8 @@ INTERVAL_FIELDS = {
     "GBM_REVIEW_INTERVAL_MINUTES",
     "GBM_DELIVERY_INTERVAL_MINUTES",
 }
+
+SESSION_STATUS_VALUES = ("未初始化", "可复用", "需补登录", "已停用")
 
 PLATFORM_LABELS = {
     "amap": "高德地图",
@@ -274,8 +291,86 @@ def platform_display_name(platform: str) -> str:
     return PLATFORM_LABELS.get(key, platform.strip() or platform)
 
 
+def current_machine_alias() -> str:
+    return socket.gethostname().strip() or "本机"
+
+
+def _slugify(value: str) -> str:
+    text = re.sub(r"[^A-Za-z0-9._-]+", "_", str(value).strip())
+    return text.strip("._-") or "default"
+
+
+def default_session_file(platform: str, account_alias: str) -> str:
+    return f"auth/{_slugify(platform)}__{_slugify(account_alias)}.state.json"
+
+
+def load_session_bindings(path: Path, registry_bindings: list[PlatformBindingConfig], machine_alias: str) -> list[SessionBindingConfig]:
+    existing_map: dict[tuple[str, str], dict[str, str]] = {}
+    if path.exists():
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        for item in payload.get("bindings", []):
+            if not isinstance(item, dict):
+                continue
+            store_id = str(item.get("store_id", "")).strip()
+            platform = str(item.get("platform", "")).strip()
+            if store_id and platform:
+                existing_map[(store_id, platform)] = {
+                    "machine_alias": str(item.get("machine_alias", "")).strip(),
+                    "session_file": str(item.get("session_file", "")).strip(),
+                    "status": str(item.get("status", "")).strip(),
+                    "last_login_at": str(item.get("last_login_at", "")).strip(),
+                    "note": str(item.get("note", "")).strip(),
+                }
+
+    rows: list[SessionBindingConfig] = []
+    for binding in registry_bindings:
+        key = (binding.store_id, binding.platform)
+        existing = existing_map.get(key, {})
+        rows.append(
+            SessionBindingConfig(
+                store_id=binding.store_id,
+                store_name=binding.store_name,
+                platform=binding.platform,
+                machine_alias=existing.get("machine_alias") or machine_alias,
+                session_file=existing.get("session_file") or default_session_file(binding.platform, binding.account_alias),
+                status=existing.get("status") or ("已停用" if not binding.enabled else "未初始化"),
+                last_login_at=existing.get("last_login_at", ""),
+                note=existing.get("note", ""),
+            )
+        )
+    return rows
+
+
+def save_session_bindings(path: Path, bindings: list[SessionBindingConfig]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "bindings": [
+            {
+                "store_id": item.store_id,
+                "store_name": item.store_name,
+                "platform": item.platform,
+                "machine_alias": item.machine_alias,
+                "session_file": item.session_file,
+                "status": item.status,
+                "last_login_at": item.last_login_at,
+                "note": item.note,
+            }
+            for item in bindings
+        ]
+    }
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
 class ControlCenterApp:
-    def __init__(self, root_dir: Path, profile_dir: Path, env_path: Path, rules_path: Path, registry_path: Path) -> None:
+    def __init__(
+        self,
+        root_dir: Path,
+        profile_dir: Path,
+        env_path: Path,
+        rules_path: Path,
+        registry_path: Path,
+        session_path: Path,
+    ) -> None:
         if tk is None or messagebox is None or ttk is None:
             raise RuntimeError(
                 "当前 Python 环境缺少 tkinter，无法启动可视化控制台。请安装带 Tk 的 Python，或先用命令行脚本运行。"
@@ -285,6 +380,7 @@ class ControlCenterApp:
         self.env_path = env_path
         self.rules_path = rules_path
         self.registry_path = registry_path
+        self.session_path = session_path
         self.output_queue: Queue[str] = Queue()
         self.running = False
 
@@ -292,10 +388,12 @@ class ControlCenterApp:
         self.env_values = load_env_values(self.env_path)
         self.store_targets = load_store_targets(self.rules_path)
         self.registry_bindings = load_registry_bindings(self.registry_path)
+        self.machine_alias = current_machine_alias()
+        self.session_bindings = load_session_bindings(self.session_path, self.registry_bindings, self.machine_alias)
 
         self.root = tk.Tk()
         self.root.title("门店监控控制台")
-        self.root.geometry("1020x780")
+        self.root.geometry("1240x860")
 
         self.entries: dict[str, tk.Entry] = {}
         self.target_entries: dict[str, tk.Entry] = {}
@@ -304,6 +402,10 @@ class ControlCenterApp:
         self.binding_account_entries: dict[tuple[str, str], tk.Entry] = {}
         self.binding_owner_entries: dict[tuple[str, str], tk.Entry] = {}
         self.binding_enabled_flags: dict[tuple[str, str], tk.BooleanVar] = {}
+        self.session_status_vars: dict[tuple[str, str], tk.StringVar] = {}
+        self.session_machine_entries: dict[tuple[str, str], tk.Entry] = {}
+        self.session_last_login_entries: dict[tuple[str, str], tk.Entry] = {}
+        self.session_note_entries: dict[tuple[str, str], tk.Entry] = {}
 
         self._build_ui()
         self.root.after(120, self._flush_output)
@@ -312,9 +414,12 @@ class ControlCenterApp:
         container = ttk.Frame(self.root, padding=12)
         container.pack(fill="both", expand=True)
 
+        self._build_summary_banner(container)
+
         intro = (
             "先保存配置，再点按钮运行。验证码仍在平台登录页里输入；"
-            "这个控制台负责飞书、时间段、频率、门店平台绑定、门店目标和一键安装/验收。"
+            "客户不需要手动找会话文件。系统默认把登录状态绑定在当前这台部署电脑上，"
+            "控制台只负责飞书、时间段、频率、门店平台绑定、门店目标和一键安装/验收。"
         )
         ttk.Label(container, text=intro, wraplength=940, justify="left").pack(anchor="w", pady=(0, 10))
 
@@ -328,9 +433,25 @@ class ControlCenterApp:
         self._build_basic_settings(left)
         self._build_schedule_settings(right)
         self._build_registry_bindings(container)
+        self._build_session_bindings(container)
         self._build_store_targets(container)
         self._build_actions(container)
         self._build_output(container)
+
+    def _build_summary_banner(self, parent: ttk.Frame) -> None:
+        frame = ttk.LabelFrame(parent, text="当前部署摘要", padding=10)
+        frame.pack(fill="x", pady=(0, 10))
+        items = [
+            ("当前部署电脑", self.machine_alias),
+            ("平台绑定数", str(len(self.registry_bindings))),
+            ("外卖默认频率", f"{self.env_values.get('GBM_DELIVERY_INTERVAL_MINUTES', '30')} 分钟"),
+            ("评价默认频率", f"{self.env_values.get('GBM_REVIEW_INTERVAL_MINUTES', '60')} 分钟"),
+        ]
+        for idx, (label, value) in enumerate(items):
+            box = ttk.Frame(frame, padding=(0, 2))
+            box.grid(row=0, column=idx, sticky="w", padx=(0, 18))
+            ttk.Label(box, text=label).pack(anchor="w")
+            ttk.Label(box, text=value).pack(anchor="w")
 
     def _build_basic_settings(self, parent: ttk.Frame) -> None:
         frame = ttk.LabelFrame(parent, text="基础配置", padding=10)
@@ -430,6 +551,66 @@ class ControlCenterApp:
         frame.columnconfigure(3, weight=1)
         frame.columnconfigure(4, weight=1)
 
+    def _build_session_bindings(self, parent: ttk.Frame) -> None:
+        frame = ttk.LabelFrame(parent, text="登录与会话状态", padding=10)
+        frame.pack(fill="x", pady=(0, 12))
+        ttk.Label(
+            frame,
+            text="客户不用自己找会话文件。首次在这台部署电脑上登录一次即可；后面优先复用，失效时再把状态改成“需补登录”。",
+            wraplength=1100,
+            justify="left",
+        ).grid(row=0, column=0, columnspan=8, sticky="w", pady=(0, 8))
+
+        headings = ["门店", "平台", "当前状态", "绑定电脑", "最近登录", "会话文件", "备注", "快捷动作"]
+        for col, title in enumerate(headings):
+            ttk.Label(frame, text=title).grid(row=1, column=col, sticky="w", padx=(0, 8))
+
+        for idx, item in enumerate(self.session_bindings, start=2):
+            key = (item.store_id, item.platform)
+            ttk.Label(frame, text=item.store_name).grid(row=idx, column=0, sticky="w", pady=4)
+            ttk.Label(frame, text=platform_display_name(item.platform)).grid(row=idx, column=1, sticky="w", pady=4)
+
+            status_var = tk.StringVar(value=item.status)
+            status_box = ttk.Combobox(
+                frame,
+                textvariable=status_var,
+                values=SESSION_STATUS_VALUES,
+                width=10,
+                state="readonly",
+            )
+            status_box.grid(row=idx, column=2, sticky="w", pady=4)
+            self.session_status_vars[key] = status_var
+
+            machine_entry = ttk.Entry(frame, width=16)
+            machine_entry.insert(0, item.machine_alias)
+            machine_entry.grid(row=idx, column=3, sticky="ew", pady=4, padx=(8, 0))
+            self.session_machine_entries[key] = machine_entry
+
+            login_entry = ttk.Entry(frame, width=16)
+            login_entry.insert(0, item.last_login_at)
+            login_entry.grid(row=idx, column=4, sticky="ew", pady=4, padx=(8, 0))
+            self.session_last_login_entries[key] = login_entry
+
+            ttk.Label(frame, text=item.session_file).grid(row=idx, column=5, sticky="w", pady=4, padx=(8, 0))
+
+            note_entry = ttk.Entry(frame, width=24)
+            note_entry.insert(0, item.note)
+            note_entry.grid(row=idx, column=6, sticky="ew", pady=4, padx=(8, 0))
+            self.session_note_entries[key] = note_entry
+
+            action_box = ttk.Frame(frame)
+            action_box.grid(row=idx, column=7, sticky="w", pady=4, padx=(8, 0))
+            ttk.Button(action_box, text="标记已登录", command=lambda item_key=key: self.mark_session_reusable(item_key)).pack(
+                side="left"
+            )
+            ttk.Button(action_box, text="需补登录", command=lambda item_key=key: self.mark_session_relogin(item_key)).pack(
+                side="left", padx=(6, 0)
+            )
+
+        frame.columnconfigure(3, weight=1)
+        frame.columnconfigure(4, weight=1)
+        frame.columnconfigure(6, weight=1)
+
     def _build_actions(self, parent: ttk.Frame) -> None:
         frame = ttk.LabelFrame(parent, text="操作", padding=10)
         frame.pack(fill="x", pady=(0, 12))
@@ -440,6 +621,7 @@ class ControlCenterApp:
             ("运行验收", lambda: self.run_task("运行验收", self.run_acceptance)),
             ("打开结果目录", self.open_results),
             ("打开登录清单", self.open_login_checklist),
+            ("打开认证目录", self.open_auth_dir),
         ]
         for idx, (label, action) in enumerate(buttons):
             ttk.Button(frame, text=label, command=action).grid(row=0, column=idx, padx=(0, 8), pady=4)
@@ -532,13 +714,44 @@ class ControlCenterApp:
                 )
             )
         save_store_targets(self.rules_path, targets)
+
+        session_rows: list[SessionBindingConfig] = []
+        for item in self.session_bindings:
+            key = (item.store_id, item.platform)
+            status = self.session_status_vars[key].get().strip() or "未初始化"
+            machine_alias = self.session_machine_entries[key].get().strip() or self.machine_alias
+            last_login_at = self.session_last_login_entries[key].get().strip()
+            note = self.session_note_entries[key].get().strip()
+            session_rows.append(
+                SessionBindingConfig(
+                    store_id=item.store_id,
+                    store_name=item.store_name,
+                    platform=item.platform,
+                    machine_alias=machine_alias,
+                    session_file=item.session_file,
+                    status=status,
+                    last_login_at=last_login_at,
+                    note=note,
+                )
+            )
+        save_session_bindings(self.session_path, session_rows)
+
         self.env_values = load_env_values(self.env_path)
         self.store_targets = load_store_targets(self.rules_path)
         self.registry_bindings = load_registry_bindings(self.registry_path)
+        self.session_bindings = load_session_bindings(self.session_path, self.registry_bindings, self.machine_alias)
         self._append_output("配置已保存。\n")
         if notify:
-            messagebox.showinfo("保存成功", "飞书、时间段、门店平台绑定和 KPI 配置已保存。")
+            messagebox.showinfo("保存成功", "飞书、时间段、平台绑定、登录状态和 KPI 配置已保存。")
         return True
+
+    def mark_session_reusable(self, key: tuple[str, str]) -> None:
+        self.session_status_vars[key].set("可复用")
+        self.session_last_login_entries[key].delete(0, "end")
+        self.session_last_login_entries[key].insert(0, datetime.now().strftime("%Y-%m-%d %H:%M"))
+
+    def mark_session_relogin(self, key: tuple[str, str]) -> None:
+        self.session_status_vars[key].set("需补登录")
 
     def run_task(self, name: str, task: Callable[[], None]) -> None:
         if self.running:
@@ -678,6 +891,11 @@ class ControlCenterApp:
         checklist = self.profile_dir / "login_checklist.md"
         open_path(checklist if checklist.exists() else self.profile_dir)
 
+    def open_auth_dir(self) -> None:
+        auth_dir = self.profile_dir / "auth"
+        auth_dir.mkdir(parents=True, exist_ok=True)
+        open_path(auth_dir)
+
     def run(self) -> None:
         self.root.mainloop()
 
@@ -701,6 +919,11 @@ def build_parser() -> argparse.ArgumentParser:
         default="data/client_profiles/shibaojie/stores_registry.json",
         help="Store registry path",
     )
+    parser.add_argument(
+        "--session-file",
+        default="data/client_profiles/shibaojie/auth/session_registry.json",
+        help="Session binding registry path",
+    )
     return parser
 
 
@@ -713,6 +936,7 @@ def main() -> int:
         env_path=(root_dir / args.env_file).resolve(),
         rules_path=(root_dir / args.rules_file).resolve(),
         registry_path=(root_dir / args.registry_file).resolve(),
+        session_path=(root_dir / args.session_file).resolve(),
     )
     app.run()
     return 0

@@ -20,6 +20,7 @@ CUSTOMER_DELIVERABLES = [
     "README.md",
 ]
 CUSTOMER_PROFILE_ITEMS = [
+    "auth",
     "client_usage_guide.md",
     "execution_board.md",
     "login_checklist.md",
@@ -56,6 +57,8 @@ def should_skip(path: Path) -> bool:
 
 
 def copy_item(src: Path, dst: Path) -> None:
+    if not src.exists():
+        return
     if should_skip(src):
         return
     if src.is_dir():

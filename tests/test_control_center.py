@@ -7,13 +7,17 @@ from tempfile import TemporaryDirectory
 
 from gb_monitor.control_center import (
     PlatformBindingConfig,
+    SessionBindingConfig,
     StoreTargetConfig,
+    default_session_file,
     load_env_values,
     load_registry_bindings,
+    load_session_bindings,
     load_store_targets,
     platform_display_name,
     save_registry_bindings,
     save_env_values,
+    save_session_bindings,
     save_store_targets,
 )
 
@@ -155,6 +159,41 @@ class ControlCenterTests(unittest.TestCase):
             self.assertFalse(updated["stores"][0]["platforms"]["douyin"]["enabled"])
             self.assertEqual(updated["stores"][0]["platforms"]["meituan"]["account_alias"], "mt_new")
             self.assertTrue(updated["stores"][0]["platforms"]["meituan"]["enabled"])
+
+    def test_session_bindings_default_and_save_round_trip(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            session_path = Path(tmpdir) / "auth" / "session_registry.json"
+            bindings = [
+                PlatformBindingConfig("s1", "门店一", "meituan", "manual", "mt_1", "A", True),
+                PlatformBindingConfig("s1", "门店一", "dianping", "manual", "dp_1", "A", False),
+            ]
+
+            loaded = load_session_bindings(session_path, bindings, "DESKTOP-001")
+            self.assertEqual(loaded[0].machine_alias, "DESKTOP-001")
+            self.assertEqual(loaded[0].session_file, default_session_file("meituan", "mt_1"))
+            self.assertEqual(loaded[0].status, "未初始化")
+            self.assertEqual(loaded[1].status, "已停用")
+
+            save_session_bindings(
+                session_path,
+                [
+                    SessionBindingConfig(
+                        store_id="s1",
+                        store_name="门店一",
+                        platform="meituan",
+                        machine_alias="DESKTOP-002",
+                        session_file="auth/meituan__mt_1.state.json",
+                        status="可复用",
+                        last_login_at="2026-03-08 20:00",
+                        note="首登完成",
+                    )
+                ],
+            )
+            reloaded = load_session_bindings(session_path, [bindings[0]], "DESKTOP-001")
+            self.assertEqual(reloaded[0].machine_alias, "DESKTOP-002")
+            self.assertEqual(reloaded[0].status, "可复用")
+            self.assertEqual(reloaded[0].last_login_at, "2026-03-08 20:00")
+            self.assertEqual(reloaded[0].note, "首登完成")
 
 
 if __name__ == "__main__":
