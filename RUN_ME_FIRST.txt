@@ -1,0 +1,17 @@
+食宝街门店监测系统 - 客户运行包先看这里
+
+你们如果只是验收这套系统能不能跑通，不需要先研究 PR、代码或命令行。
+
+请按这个顺序操作：
+
+1. 双击 scripts/install_local.command
+2. 双击 scripts/open_common_settings.command
+3. 双击 scripts/run_acceptance_demo.command
+
+你们验收时只看三件事：
+
+1. 飞书有没有收到消息
+2. 是否生成了结果文件
+3. 看板里能不能看到每个门店当天内容和 KPI 状态
+
+如果中间有报错，不需要自己分析，把报错页面截图发回来即可。

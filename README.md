@@ -243,6 +243,7 @@ gbm latest-metrics \
 - 后面拿到任一平台导出的本地快照时，直接覆盖对应文件即可
 - 不需要再去改全局 `examples/*.json`
 - 如果 `.env` 里已经配置 `GBM_FEISHU_WEBHOOK`，这条命令会自动把运行摘要和实时舆情结果推送到飞书
+- 如果要改抓取时间段和频率，直接改 `.env` 里的 `GBM_*_WINDOW_*` / `GBM_*_INTERVAL_MINUTES`
 
 ### 一条命令做验收演示
 
@@ -255,6 +256,34 @@ gbm latest-metrics \
 - 会先打一条飞书测试消息
 - 会再跑整店链路并检查交付文件是否生成
 - 适合给客户演示“这套系统已经跑通”
+- 如果是 Mac 非技术客户，也可以直接双击：
+  - `scripts/install_local.command`
+  - `scripts/open_common_settings.command`
+  - `scripts/run_acceptance_demo.command`
+
+### 时间段和频率怎么改
+
+直接改 `.env` 里的这些字段：
+
+```bash
+GBM_SIGNAL_WINDOW_START=10:00
+GBM_SIGNAL_WINDOW_END=21:00
+GBM_SIGNAL_INTERVAL_MINUTES=60
+GBM_REVIEW_WINDOW_START=10:00
+GBM_REVIEW_WINDOW_END=20:00
+GBM_REVIEW_INTERVAL_MINUTES=120
+GBM_DELIVERY_LUNCH_START=10:30
+GBM_DELIVERY_LUNCH_END=12:30
+GBM_DELIVERY_DINNER_START=17:00
+GBM_DELIVERY_DINNER_END=19:00
+GBM_DELIVERY_INTERVAL_MINUTES=30
+```
+
+说明：
+- `SIGNAL` 对应门店内容 / 舆情监控
+- `REVIEW` 对应评价类采集
+- `DELIVERY` 对应外卖类采集
+- 单位都是分钟或 `HH:MM`
 
 ### 运行门店实时舆情精筛
 
