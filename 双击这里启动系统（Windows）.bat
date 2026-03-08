@@ -6,6 +6,7 @@ set "APP_HOME=%PUBLIC%\GBM_Runtime\shibaojie"
 set "LOG_FILE=%APP_HOME%\startup.log"
 set "PYTHON_BIN="
 set "PYTHON_DESC="
+set "PYTHON_GUI="
 
 if /I not "%SOURCE_DIR%"=="%APP_HOME%" (
   echo [0/5] Preparing runtime folder...
@@ -41,9 +42,16 @@ echo auth_dir=%APP_HOME%\auth >> "%LOG_FILE%"
 
 echo [5/5] Launching control center...
 set "PYTHONPATH=src"
-%PYTHON_BIN% -m gb_monitor.control_center --root-dir "%cd%" --profile-dir "data/client_profiles/shibaojie" --env-file ".env" --rules-file "data/client_profiles/shibaojie/store_signal_rules.json" >> "%LOG_FILE%" 2>&1
-if errorlevel 1 goto RUN_FAILED
-
+if defined PYTHON_GUI if exist "%PYTHON_GUI%" (
+  start "" "%PYTHON_GUI%" -m gb_monitor.control_center --root-dir "%cd%" --profile-dir "data/client_profiles/shibaojie" --env-file ".env" --rules-file "data/client_profiles/shibaojie/store_signal_rules.json"
+  endlocal
+  exit /b 0
+)
+if "%PYTHON_BIN%"=="py -3" (
+  start "" py -3 -m gb_monitor.control_center --root-dir "%cd%" --profile-dir "data/client_profiles/shibaojie" --env-file ".env" --rules-file "data/client_profiles/shibaojie/store_signal_rules.json"
+) else (
+  start "" "%PYTHON_BIN%" -m gb_monitor.control_center --root-dir "%cd%" --profile-dir "data/client_profiles/shibaojie" --env-file ".env" --rules-file "data/client_profiles/shibaojie/store_signal_rules.json"
+)
 endlocal
 exit /b 0
 
@@ -54,6 +62,7 @@ if not errorlevel 1 (
   del "%APP_HOME%\python_path.txt" >nul 2>nul
   set "PYTHON_BIN=py -3"
   set "PYTHON_DESC=%DETECTED_PY%"
+  set "PYTHON_GUI=%DETECTED_PY:\python.exe=\pythonw.exe%"
   exit /b 0
 )
 del "%APP_HOME%\python_path.txt" >nul 2>nul
@@ -67,6 +76,7 @@ for /f "delims=" %%P in ('where python 2^>nul') do (
       del "%APP_HOME%\python_path.txt" >nul 2>nul
       set "PYTHON_BIN=%%P"
       set "PYTHON_DESC=%DETECTED_PY%"
+      set "PYTHON_GUI=%DETECTED_PY:\python.exe=\pythonw.exe%"
       exit /b 0
     )
     del "%APP_HOME%\python_path.txt" >nul 2>nul
@@ -107,15 +117,6 @@ exit /b 1
 echo.
 echo Python is installed, but tkinter is missing.
 echo Please reinstall official Python 3 for Windows.
-echo Log file: %LOG_FILE%
-echo.
-pause
-exit /b 1
-
-:RUN_FAILED
-echo.
-echo Control center failed to start.
-echo Please send me a screenshot of this window.
 echo Log file: %LOG_FILE%
 echo.
 pause

@@ -58,9 +58,10 @@ echo "auth_dir=$APP_HOME/auth" >> "$LOG_FILE"
 
 echo "[5/5] Launching control center..."
 export PYTHONPATH=src
-exec "$PYTHON_BIN" -m gb_monitor.control_center \
+nohup "$PYTHON_BIN" -m gb_monitor.control_center \
   --root-dir "$APP_HOME" \
   --profile-dir "$APP_HOME/data/client_profiles/shibaojie" \
   --env-file "$APP_HOME/.env" \
   --rules-file "$APP_HOME/data/client_profiles/shibaojie/store_signal_rules.json" \
-  >> "$LOG_FILE" 2>&1
+  >> "$LOG_FILE" 2>&1 &
+exit 0

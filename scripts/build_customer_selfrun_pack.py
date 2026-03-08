@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import argparse
+import plistlib
 import shutil
+import subprocess
+import tempfile
 from pathlib import Path
 
 
@@ -98,6 +101,69 @@ def copy_item(src: Path, dst: Path) -> None:
     shutil.copy2(src, dst)
 
 
+def build_mac_icns(icon_png: Path, icns_output: Path) -> bool:
+    if not icon_png.exists():
+        return False
+    if shutil.which("iconutil") is None or shutil.which("sips") is None:
+        return False
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        iconset = Path(tmp_dir) / "AppIcon.iconset"
+        iconset.mkdir(parents=True, exist_ok=True)
+        sizes = [
+            (16, "icon_16x16.png"),
+            (32, "icon_16x16@2x.png"),
+            (32, "icon_32x32.png"),
+            (64, "icon_32x32@2x.png"),
+            (128, "icon_128x128.png"),
+            (256, "icon_128x128@2x.png"),
+            (256, "icon_256x256.png"),
+            (512, "icon_256x256@2x.png"),
+            (512, "icon_512x512.png"),
+            (1024, "icon_512x512@2x.png"),
+        ]
+        for size, name in sizes:
+            subprocess.run(
+                ["sips", "-z", str(size), str(size), str(icon_png), "--out", str(iconset / name)],
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        subprocess.run(
+            ["iconutil", "-c", "icns", str(iconset), "-o", str(icns_output)],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    return icns_output.exists()
+
+
+def build_mac_launcher_app(staging_root: Path) -> None:
+    if shutil.which("osacompile") is None:
+        return
+    app_path = staging_root / "橘子谷门店监控.app"
+    applescript = (
+        'set bundlePath to POSIX path of (path to me)\n'
+        'set parentDir to do shell script "dirname " & quoted form of bundlePath\n'
+        'do shell script "cd " & quoted form of parentDir & " && ./scripts/start_mac_runtime.command >/tmp/orange_monitor_launcher.log 2>&1 &"'
+    )
+    subprocess.run(
+        ["osacompile", "-o", str(app_path), "-e", applescript],
+        check=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    plist_path = app_path / "Contents" / "Info.plist"
+    if plist_path.exists():
+        payload = plistlib.loads(plist_path.read_bytes())
+        payload["CFBundleName"] = "橘子谷门店监控"
+        payload["CFBundleDisplayName"] = "橘子谷门店监控"
+        payload["CFBundleIdentifier"] = "com.juzivalley.storemonitor"
+        icon_output = app_path / "Contents" / "Resources" / "AppIcon.icns"
+        if build_mac_icns(staging_root / "assets" / "orange_monitor_icon.png", icon_output):
+            payload["CFBundleIconFile"] = "AppIcon"
+        plist_path.write_bytes(plistlib.dumps(payload))
+
+
 def build_pack(
     profile_name: str,
     bundle_name: str,
@@ -118,10 +184,12 @@ def build_pack(
         items = [ROOT / item for item in WINDOWS_ROOT_ITEMS]
         items.extend(ROOT / item for item in WINDOWS_SCRIPT_ITEMS)
         items.append(ROOT / "src" / "gb_monitor")
+        items.append(ROOT / "assets")
     elif mac_only:
         items = [ROOT / item for item in MAC_ROOT_ITEMS]
         items.extend(ROOT / item for item in MAC_SCRIPT_ITEMS)
         items.append(ROOT / "src" / "gb_monitor")
+        items.append(ROOT / "assets")
     else:
         items = [
             ROOT / "pyproject.toml",
@@ -137,6 +205,7 @@ def build_pack(
             ROOT / "2_再双击打开控制台.bat",
             ROOT / "3_需要时再双击运行验收.bat",
             ROOT / "src" / "gb_monitor",
+            ROOT / "assets",
             ROOT / "scripts",
         ]
 
@@ -150,6 +219,9 @@ def build_pack(
 
     for name in CUSTOMER_PROFILE_ITEMS:
         copy_item(profile_dir / name, staging_root / "data" / "client_profiles" / profile_name / name)
+
+    if mac_only or not windows_only:
+        build_mac_launcher_app(staging_root)
 
     zip_output.parent.mkdir(parents=True, exist_ok=True)
     archive_base = zip_output.with_suffix("")
