@@ -414,6 +414,149 @@ class SignalRuleTests(unittest.TestCase):
         self.assertEqual([item.content_id for item in matches], ["dy-kol-1"])
         self.assertTrue(any("缺少POI门店锚点" in item.reason or "粉丝量不足" in item.reason or "作者级别未命中白名单" in item.reason for item in rejections))
 
+    def test_match_candidates_supports_source_store_binding_without_store_text(self) -> None:
+        rules = [
+            SignalRule(
+                store_id="store-001",
+                store_name="凤状元·江西小炒·非遗米粉(食宝街店)",
+                platform="douyin",
+                include_keywords=["凤状元", "食宝街店"],
+                exact_include_keywords=["凤状元·江西小炒·非遗米粉(食宝街店)"],
+                exclude_keywords=[],
+                required_all_keywords=[],
+                required_context_keywords=["探店"],
+                required_location_keywords=["北京"],
+                required_any_fields=["title", "content", "poi_name"],
+                author_include_keywords=[],
+                author_exclude_keywords=[],
+                author_level_include_keywords=[],
+                store_aliases=["食宝街凤状元"],
+                daily_target_count=5,
+                require_source_store=True,
+                min_score=6,
+            )
+        ]
+        candidates = [
+            SignalCandidate(
+                content_id="dy-source-ok",
+                platform="douyin",
+                title="今天发内容了",
+                content="这条内容本身没有明显门店词。",
+                poi_name="",
+                author_name="路人用户",
+                author_level="",
+                verified_label="",
+                follower_count=0,
+                author_tags=[],
+                source_store_id="store-001",
+                source_store_name="凤状元·江西小炒·非遗米粉(食宝街店)",
+                source_channel="碰一碰",
+                campaign_name="食宝街三月拉新",
+                content_library_tag="春季内容库",
+                ip_location="北京",
+                topic_tags=[],
+                url="https://example.com/source-ok",
+                published_at="2026-03-08T10:30:00+08:00",
+                like_count=1,
+                favorite_count=0,
+                comment_count=0,
+                share_count=0,
+                raw_payload={},
+            ),
+            SignalCandidate(
+                content_id="dy-source-drop",
+                platform="douyin",
+                title="今天发内容了",
+                content="这条内容本身没有明显门店词。",
+                poi_name="",
+                author_name="路人用户",
+                author_level="",
+                verified_label="",
+                follower_count=0,
+                author_tags=[],
+                source_store_id="store-999",
+                source_store_name="其他门店",
+                source_channel="碰一碰",
+                campaign_name="食宝街三月拉新",
+                content_library_tag="春季内容库",
+                ip_location="北京",
+                topic_tags=[],
+                url="https://example.com/source-drop",
+                published_at="2026-03-08T10:30:00+08:00",
+                like_count=1,
+                favorite_count=0,
+                comment_count=0,
+                share_count=0,
+                raw_payload={},
+            ),
+        ]
+
+        matches, rejections = review_candidates(rules, candidates)
+        self.assertEqual([item.content_id for item in matches], ["dy-source-ok"])
+        self.assertIn("门店来源ID直连", matches[0].reason)
+        self.assertEqual(matches[0].source_channel, "碰一碰")
+        self.assertEqual(matches[0].content_library_tag, "春季内容库")
+        self.assertTrue(any("来源门店ID不匹配" in item.reason for item in rejections))
+
+    def test_build_signal_dashboard_shows_store_target_summary(self) -> None:
+        now = datetime.fromisoformat("2026-03-08T11:00:00+08:00")
+        rules = [
+            SignalRule(
+                store_id="store-001",
+                store_name="凤状元·江西小炒·非遗米粉(食宝街店)",
+                platform="douyin",
+                include_keywords=["凤状元"],
+                exact_include_keywords=["凤状元·江西小炒·非遗米粉(食宝街店)"],
+                exclude_keywords=[],
+                required_all_keywords=[],
+                required_context_keywords=[],
+                required_location_keywords=[],
+                required_any_fields=["title", "content", "poi_name"],
+                author_include_keywords=[],
+                author_exclude_keywords=[],
+                author_level_include_keywords=[],
+                daily_target_count=3,
+                min_score=1,
+            )
+        ]
+        candidates = [
+            SignalCandidate(
+                content_id="dy-001",
+                platform="douyin",
+                title="凤状元食宝街店",
+                content="北京探店。",
+                poi_name="凤状元·江西小炒·非遗米粉(食宝街店)",
+                author_name="测试用户",
+                author_level="",
+                verified_label="",
+                follower_count=0,
+                author_tags=[],
+                source_store_id="store-001",
+                source_store_name="凤状元·江西小炒·非遗米粉(食宝街店)",
+                source_channel="内容库",
+                campaign_name="三月活动",
+                content_library_tag="门店内容库",
+                ip_location="北京",
+                topic_tags=[],
+                url="https://example.com/target",
+                published_at="2026-03-08T09:00:00+08:00",
+                like_count=5,
+                favorite_count=0,
+                comment_count=0,
+                share_count=0,
+                raw_payload={},
+            )
+        ]
+
+        matches, rejections = review_candidates(rules, candidates)
+        board = build_signal_dashboard(now, matches, rejections, all_matches=matches, rules=rules)
+        report = build_signal_report(now, matches, all_matches=matches, rules=rules)
+        self.assertIn("## 今日门店KPI达标", board)
+        self.assertIn("待补2条", board)
+        self.assertIn("门店直连记账", board)
+        self.assertIn("今日相关内容: 1", report)
+        self.assertIn("目标3条", report)
+
 
 if __name__ == "__main__":
     unittest.main()

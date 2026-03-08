@@ -46,6 +46,11 @@ if [ "$FEISHU_ENABLED" -eq 1 ]; then
 fi
 
 PYTHONPATH=src python3 -m gb_monitor.cli init-db
+READINESS_ARGS=(--profile-dir "$PROFILE_DIR")
+if [ "$FEISHU_ENABLED" -eq 1 ]; then
+  READINESS_ARGS+=(--require-feishu)
+fi
+PYTHONPATH=src python3 -m gb_monitor.cli profile-readiness "${READINESS_ARGS[@]}"
 PYTHONPATH=src python3 -m gb_monitor.cli validate-registry --registry "$STORE_REGISTRY"
 PYTHONPATH=src python3 -m gb_monitor.cli run "${RUN_ARGS[@]}"
 PYTHONPATH=src python3 -m gb_monitor.cli report --hours 24

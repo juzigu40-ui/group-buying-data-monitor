@@ -264,6 +264,22 @@ gbm feishu-ping
 如果已经是单店 profile，建议直接跑 profile 级舆情链路：
 
 ```bash
+gbm profile-readiness \
+  --profile-dir data/client_profiles/shibaojie \
+  --require-feishu
+```
+
+这条命令会先告诉你 profile 缺不缺：
+- `login_inventory.local.json`
+- `stores_registry.json`
+- `store_signal_rules.json`
+- `signal_inputs/*.json`
+- `source_store_id` / `source_store_name` 是否已经接好门店直连记账
+- `GBM_FEISHU_WEBHOOK`
+
+确认自检通过后，再跑 profile 级舆情链路：
+
+```bash
 gbm profile-signals \
   --profile-dir data/client_profiles/shibaojie \
   --mode all \
@@ -297,11 +313,14 @@ gbm signal-board \
 说明：
 - 会生成一个适合直接转给客户或贴进飞书/文档的 Markdown 看板
 - 看板会展示平台分布、命中明细、达人档案、疑似引流观察、规则说明，以及被过滤掉的噪音样例
+- 看板还会展示“今日各门店相关内容数 / 门店直连记账数 / KPI 目标达成状态”
 - profile 级链路会优先读取 `signal_inputs/public_xiaohongshu.json`、`signal_inputs/public_douyin.json`、`signal_inputs/public_shipinhao.json`
 - 标准输入文件存在时，不再混用旧的 demo/fallback 文件
 - 正式监测建议带 `--mark-dispatched`，这样去重账本才会记录已发内容
 - 如果要同步推送飞书，正式运行时同时带 `--notify`
 - 重点达人定向监控可在 `store_signal_rules.json` 里配置：`focus_author_names`、`focus_author_tags`、`focus_verified_labels`、`author_level_include_keywords`、`min_follower_count`、`require_poi`
+- 如果要按门店考核每日发帖数，可再配置：`daily_target_count`、`require_source_store`、`store_aliases`
+- 如果 OpenClaw 或内容库导出能提供 `source_store_id` / `source_store_name` / `source_channel`，系统会优先按门店直连记账统计
 
 如果需要把高置信结果直接推到飞书：
 
@@ -335,9 +354,11 @@ gbm profile-usage-guide \
 ```
 
 说明：
-- 客户看到的不是模糊的“OpenClaw+skills”，而是输入规范、规则命中、调度窗口、去重账本和交付文件
+- 客户看到的不是模糊的“OpenClaw+skills”，而是输入规范、规则命中、调度窗口、去重账本、门店达标统计和交付文件
 - 如果客户仍希望保留 OpenClaw，建议把它定位为采集/执行引擎；客户日常使用的是本系统产出的看板、报告和交付页
 - 如果客户关心达人内容带来的引流，当前版本支持“发布后经营波动观察”，但不冒充精确归因
+- 如果客户关心“每个门店当天到底发了多少条相关内容”，当前版本已支持按门店统计并与目标值比对
+- 如果客户要把这件事当成门店KPI监管，建议打开 `require_source_store` 并让采集层写入 `source_store_id` / `source_store_name`
 
 ### 运行测试
 

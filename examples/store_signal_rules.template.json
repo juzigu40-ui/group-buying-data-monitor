@@ -42,8 +42,13 @@
       "focus_author_names": [],
       "focus_author_tags": [],
       "focus_verified_labels": [],
+      "store_aliases": [
+        "杨记静安店"
+      ],
       "min_follower_count": 0,
+      "daily_target_count": 5,
       "require_poi": false,
+      "require_source_store": false,
       "required_any_fields": [
         "title",
         "content",

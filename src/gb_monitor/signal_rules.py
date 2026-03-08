@@ -41,8 +41,11 @@ def load_signal_rules(path: Path) -> list[SignalRule]:
         focus_author_names = _ensure_str_list(item.get("focus_author_names"))
         focus_author_tags = _ensure_str_list(item.get("focus_author_tags"))
         focus_verified_labels = _ensure_str_list(item.get("focus_verified_labels"))
+        store_aliases = _ensure_str_list(item.get("store_aliases"))
         min_follower_count = _normalize_non_negative_int(item.get("min_follower_count"))
+        daily_target_count = _normalize_non_negative_int(item.get("daily_target_count"))
         require_poi = bool(item.get("require_poi", False))
+        require_source_store = bool(item.get("require_source_store", False))
         min_score = int(item.get("min_score", 5))
 
         if not store_id or not store_name or not platform:
@@ -66,8 +69,11 @@ def load_signal_rules(path: Path) -> list[SignalRule]:
                 focus_author_names=focus_author_names,
                 focus_author_tags=focus_author_tags,
                 focus_verified_labels=focus_verified_labels,
+                store_aliases=store_aliases,
                 min_follower_count=min_follower_count,
+                daily_target_count=daily_target_count,
                 require_poi=require_poi,
+                require_source_store=require_source_store,
                 min_score=min_score,
             )
         )
@@ -104,6 +110,11 @@ def load_signal_candidates(path: Path) -> list[SignalCandidate]:
                 verified_label=str(item.get("verified_label", "")).strip(),
                 follower_count=_normalize_non_negative_int(item.get("follower_count")),
                 author_tags=_normalize_tag_list(item.get("author_tags") or item.get("account_tags")),
+                source_store_id=str(item.get("source_store_id", "")).strip(),
+                source_store_name=str(item.get("source_store_name", "")).strip(),
+                source_channel=str(item.get("source_channel", "")).strip(),
+                campaign_name=str(item.get("campaign_name", "")).strip(),
+                content_library_tag=str(item.get("content_library_tag") or item.get("content_library_id", "")).strip(),
                 ip_location=str(item.get("ip_location", "")).strip(),
                 topic_tags=_normalize_tag_list(item.get("topic_tags") or item.get("hashtags")),
                 url=str(item.get("url", "")).strip(),
@@ -185,8 +196,14 @@ def review_candidates(
     return matches, rejections
 
 
-def build_signal_report(now: datetime, matches: list[SignalMatch]) -> str:
+def build_signal_report(
+    now: datetime,
+    matches: list[SignalMatch],
+    all_matches: list[SignalMatch] | None = None,
+    rules: list[SignalRule] | None = None,
+) -> str:
     lines = [f"[{now:%Y-%m-%d %H:%M:%S}] 门店实时舆情精筛结果"]
+    lines.extend(_build_store_activity_report_lines(now, all_matches or matches, rules))
     if not matches:
         lines.append("未命中高置信内容")
         return "\n".join(lines)
@@ -212,6 +229,13 @@ def build_signal_report(now: datetime, matches: list[SignalMatch]) -> str:
         lines.append(f"  KOL判定: {_kol_tier(item)}")
         if item.focus_author_hits:
             lines.append(f"  重点达人命中: {', '.join(item.focus_author_hits)}")
+        source_summary = _source_summary(item)
+        if source_summary:
+            lines.append(f"  门店归属: {source_summary}")
+        if item.content_library_tag:
+            lines.append(f"  内容库标签: {item.content_library_tag}")
+        if item.campaign_name:
+            lines.append(f"  活动名: {item.campaign_name}")
         if item.ip_location:
             lines.append(f"  IP地域: {item.ip_location}")
         if item.poi_name:
@@ -234,9 +258,12 @@ def build_signal_dashboard(
     now: datetime,
     matches: list[SignalMatch],
     rejections: list[SignalRejection] | None = None,
+    all_matches: list[SignalMatch] | None = None,
+    rules: list[SignalRule] | None = None,
 ) -> str:
     lines = [f"# 门店实时舆情看板", "", f"- 生成时间：{now:%Y-%m-%d %H:%M:%S}"]
     rejections = rejections or []
+    lines.extend(_build_store_activity_dashboard_lines(now, all_matches or matches, rules))
     if not matches:
         lines.extend(
             [
@@ -313,6 +340,15 @@ def build_signal_dashboard(
             lines.append(
                 f"| 重点名单 | - | - | {_markdown_cell(', '.join(item.focus_author_hits))} | - | - | - | - |"
             )
+        source_summary = _source_summary(item)
+        if source_summary:
+            lines.append(f"| 门店归属 | - | - | {_markdown_cell(source_summary)} | - | - | - | - |")
+        if item.content_library_tag:
+            lines.append(
+                f"| 内容库标签 | - | - | {_markdown_cell(item.content_library_tag)} | - | - | - | - |"
+            )
+        if item.campaign_name:
+            lines.append(f"| 活动名 | - | - | {_markdown_cell(item.campaign_name)} | - | - | - | - |")
         if item.attribution_summary:
             lines.append(f"| 经营观察 | - | - | {_markdown_cell(item.attribution_summary)} | - | - | - | - |")
 
@@ -320,6 +356,87 @@ def build_signal_dashboard(
         lines.extend(_build_rejection_section(rejections))
 
     return "\n".join(lines)
+
+
+def _build_store_activity_report_lines(
+    now: datetime,
+    matches: list[SignalMatch],
+    rules: list[SignalRule] | None,
+) -> list[str]:
+    summary = _summarize_store_activity(now, matches, rules)
+    if not summary:
+        return []
+
+    total_today = sum(item["today_count"] for item in summary)
+    total_source_bound = sum(item["source_bound_count"] for item in summary)
+    dated_store_count = sum(1 for item in summary if item["target"] > 0)
+    reached_store_count = sum(1 for item in summary if item["target"] > 0 and item["today_count"] >= item["target"])
+
+    lines = [
+        f"今日相关内容: {total_today}",
+        f"门店直连记账: {total_source_bound}",
+    ]
+    if dated_store_count > 0:
+        lines.append(f"今日KPI达标门店: {reached_store_count}/{dated_store_count}")
+    for item in summary:
+        target = item["target"]
+        if target > 0:
+            status = "已达标" if item["today_count"] >= target else f"待补{target - item['today_count']}条"
+        else:
+            status = "未设置目标"
+        extra = []
+        if item["source_bound_count"] > 0:
+            extra.append(f"直连{item['source_bound_count']}条")
+        if item["undated_count"] > 0:
+            extra.append(f"未标时间{item['undated_count']}条")
+        if target > 0:
+            extra.append(f"目标{target}条")
+        detail = " / ".join(extra)
+        suffix = f" / {detail}" if detail else ""
+        lines.append(f"- {item['store_name']}: 今日{item['today_count']}条 / {status}{suffix}")
+    return lines
+
+
+def _build_store_activity_dashboard_lines(
+    now: datetime,
+    matches: list[SignalMatch],
+    rules: list[SignalRule] | None,
+) -> list[str]:
+    summary = _summarize_store_activity(now, matches, rules)
+    if not summary:
+        return []
+
+    total_today = sum(item["today_count"] for item in summary)
+    total_source_bound = sum(item["source_bound_count"] for item in summary)
+    dated_store_count = sum(1 for item in summary if item["target"] > 0)
+    reached_store_count = sum(1 for item in summary if item["target"] > 0 and item["today_count"] >= item["target"])
+
+    lines = [
+        f"- 今日相关内容：{total_today}",
+        f"- 门店直连记账：{total_source_bound}",
+    ]
+    if dated_store_count > 0:
+        lines.append(f"- 今日KPI达标门店：{reached_store_count}/{dated_store_count}")
+    lines.extend(
+        [
+            "",
+            "## 今日门店KPI达标",
+            "",
+            "| 门店 | 今日相关内容 | 门店直连记账 | 未标时间 | 目标 | 状态 |",
+            "| --- | ---: | ---: | ---: | ---: | --- |",
+        ]
+    )
+    for item in summary:
+        target = item["target"]
+        if target > 0:
+            status = "已达标" if item["today_count"] >= target else f"待补{target - item['today_count']}条"
+        else:
+            status = "未设置目标"
+        lines.append(
+            f"| {_markdown_cell(item['store_name'])} | {item['today_count']} | {item['source_bound_count']} | {item['undated_count']} | {target} | {status} |"
+        )
+    lines.append("")
+    return lines
 
 
 def matches_to_json(matches: list[SignalMatch]) -> list[dict[str, object]]:
@@ -341,7 +458,20 @@ def _evaluate_single(
         "author_tags": " ".join(candidate.author_tags),
         "topic_tags": " ".join(candidate.topic_tags),
         "ip_location": candidate.ip_location,
+        "source_store_id": candidate.source_store_id,
+        "source_store_name": candidate.source_store_name,
+        "source_channel": candidate.source_channel,
+        "campaign_name": candidate.campaign_name,
+        "content_library_tag": candidate.content_library_tag,
     }
+
+    source_id_hits, source_name_hits = _find_source_store_hits(rule, candidate)
+    if candidate.source_store_id and not source_id_hits:
+        return None, f"来源门店ID不匹配：{candidate.source_store_id}"
+    if candidate.source_store_name and not source_id_hits and not source_name_hits:
+        return None, "来源门店名称未命中当前门店"
+    if rule.require_source_store and not source_id_hits and not source_name_hits:
+        return None, "缺少门店来源直连"
 
     exclude_hits = _find_hits(rule.exclude_keywords, field_values)
     if exclude_hits:
@@ -389,7 +519,7 @@ def _evaluate_single(
     exact_hits = _find_hits(rule.exact_include_keywords, field_values)
     core_terms = [rule.store_name, *rule.include_keywords]
     required_hits = _find_hits(core_terms, {k: v for k, v in field_values.items() if k in rule.required_any_fields})
-    if not required_hits and not exact_hits:
+    if not required_hits and not exact_hits and not source_id_hits and not source_name_hits:
         return None, "未命中门店核心词"
 
     if rule.required_all_keywords:
@@ -400,13 +530,15 @@ def _evaluate_single(
             return None, f"缺少必备词：{', '.join(missing_terms)}"
 
     total_hits = _find_hits(core_terms, field_values)
-    if not total_hits and not exact_hits:
+    if not total_hits and not exact_hits and not source_id_hits and not source_name_hits:
         return None, "未命中门店规则词"
 
     has_strong_store_hit = bool(
         exact_hits.get("poi_name")
         or exact_hits.get("title")
         or _find_hits([rule.store_name], {"poi_name": candidate.poi_name, "title": candidate.title})
+        or source_id_hits
+        or source_name_hits
     )
 
     context_hits = _find_hits(rule.required_context_keywords, field_values)
@@ -424,6 +556,8 @@ def _evaluate_single(
         location_hits,
         author_level_hits,
         focus_author_hits,
+        source_id_hits,
+        source_name_hits,
     )
     matched_terms = sorted({term for hits in combined_hits.values() for term in hits})
     matched_terms.extend(
@@ -442,6 +576,8 @@ def _evaluate_single(
         author_include_hits,
         author_level_hits,
         focus_author_hits,
+        source_id_hits,
+        source_name_hits,
     )
     min_score = min_score_override if min_score_override is not None else rule.min_score
     if score < min_score:
@@ -458,6 +594,8 @@ def _evaluate_single(
         author_include_hits,
         author_level_hits,
         focus_author_hits,
+        source_id_hits,
+        source_name_hits,
         score,
     )
     return SignalMatch(
@@ -485,6 +623,11 @@ def _evaluate_single(
         matched_terms=matched_terms,
         matched_fields=matched_fields,
         focus_author_hits=sorted({term for values in focus_author_hits.values() for term in values}),
+        source_store_id=candidate.source_store_id,
+        source_store_name=candidate.source_store_name,
+        source_channel=candidate.source_channel,
+        campaign_name=candidate.campaign_name,
+        content_library_tag=candidate.content_library_tag,
         reason=reason,
         raw_payload=candidate.raw_payload,
     ), None
@@ -500,6 +643,8 @@ def _score_match(
     author_include_hits: dict[str, list[str]],
     author_level_hits: dict[str, list[str]],
     focus_author_hits: dict[str, list[str]],
+    source_id_hits: dict[str, list[str]],
+    source_name_hits: dict[str, list[str]],
 ) -> int:
     score = 0
     unique_terms = {term for values in hits.values() for term in values}
@@ -528,6 +673,10 @@ def _score_match(
         score += 2
     if focus_author_hits:
         score += 5
+    if source_id_hits:
+        score += 6
+    if source_name_hits:
+        score += 4
     if candidate.verified_label:
         score += 1
     if candidate.follower_count >= 100000:
@@ -553,6 +702,8 @@ def _build_reason(
     author_include_hits: dict[str, list[str]],
     author_level_hits: dict[str, list[str]],
     focus_author_hits: dict[str, list[str]],
+    source_id_hits: dict[str, list[str]],
+    source_name_hits: dict[str, list[str]],
     score: int,
 ) -> str:
     fragments: list[str] = []
@@ -576,6 +727,16 @@ def _build_reason(
         fragments.append("作者级别命中白名单")
     if focus_author_hits:
         fragments.append("命中重点达人名单")
+    if source_id_hits:
+        fragments.append("门店来源ID直连")
+    elif source_name_hits:
+        fragments.append("门店来源名称直连")
+    if candidate.source_channel:
+        fragments.append(f"来源渠道={candidate.source_channel}")
+    if candidate.content_library_tag:
+        fragments.append(f"内容库标签={candidate.content_library_tag}")
+    if candidate.campaign_name:
+        fragments.append(f"活动名={candidate.campaign_name}")
     if candidate.verified_label:
         fragments.append("作者存在认证信息")
     if candidate.follower_count >= 1000:
@@ -620,6 +781,19 @@ def _merge_hits(*groups: dict[str, list[str]]) -> dict[str, list[str]]:
     return merged
 
 
+def _find_source_store_hits(
+    rule: SignalRule,
+    candidate: SignalCandidate,
+) -> tuple[dict[str, list[str]], dict[str, list[str]]]:
+    source_id_hits: dict[str, list[str]] = {}
+    if candidate.source_store_id and _normalize_text(candidate.source_store_id) == _normalize_text(rule.store_id):
+        source_id_hits = {"source_store_id": [candidate.source_store_id]}
+
+    alias_terms = [rule.store_name, *rule.store_aliases]
+    source_name_hits = _find_hits(alias_terms, {"source_store_name": candidate.source_store_name})
+    return source_id_hits, source_name_hits
+
+
 def _collapse_ambiguous_matches(
     matches: list[SignalMatch],
     candidates: list[SignalCandidate],
@@ -661,6 +835,11 @@ def _collapse_ambiguous_matches(
                         verified_label=best.verified_label,
                         follower_count=best.follower_count,
                         author_tags=best.author_tags,
+                        source_store_id=best.source_store_id,
+                        source_store_name=best.source_store_name,
+                        source_channel=best.source_channel,
+                        campaign_name=best.campaign_name,
+                        content_library_tag=best.content_library_tag,
                         ip_location=best.ip_location,
                         topic_tags=best.topic_tags,
                         published_at=best.published_at,
@@ -692,6 +871,11 @@ def _build_rejection(rule: SignalRule, candidate: SignalCandidate, reason: str) 
         verified_label=candidate.verified_label,
         follower_count=candidate.follower_count,
         author_tags=candidate.author_tags,
+        source_store_id=candidate.source_store_id,
+        source_store_name=candidate.source_store_name,
+        source_channel=candidate.source_channel,
+        campaign_name=candidate.campaign_name,
+        content_library_tag=candidate.content_library_tag,
         ip_location=candidate.ip_location,
         topic_tags=candidate.topic_tags,
         published_at=candidate.published_at,
@@ -729,6 +913,71 @@ def _build_rejection_section(rejections: list[SignalRejection]) -> list[str]:
             f"| {item.platform} | {title} | {author} | {published_at} | {heat} | {reason} |"
         )
     return lines
+
+
+def _summarize_store_activity(
+    now: datetime,
+    matches: list[SignalMatch],
+    rules: list[SignalRule] | None,
+) -> list[dict[str, int | str]]:
+    targets: dict[str, int] = {}
+    store_names: dict[str, str] = {}
+    for rule in rules or []:
+        store_names.setdefault(rule.store_id, rule.store_name)
+        targets[rule.store_id] = max(targets.get(rule.store_id, 0), rule.daily_target_count)
+
+    summary: dict[str, dict[str, int | str]] = {}
+    for match in matches:
+        item = summary.setdefault(
+            match.store_id,
+            {
+                "store_id": match.store_id,
+                "store_name": store_names.get(match.store_id, match.store_name),
+                "today_count": 0,
+                "source_bound_count": 0,
+                "undated_count": 0,
+                "target": targets.get(match.store_id, 0),
+            },
+        )
+        if _is_same_local_day(match.published_at, now):
+            item["today_count"] = int(item["today_count"]) + 1
+            if _has_source_binding(match):
+                item["source_bound_count"] = int(item["source_bound_count"]) + 1
+        elif not match.published_at:
+            item["undated_count"] = int(item["undated_count"]) + 1
+
+    for store_id, store_name in store_names.items():
+        summary.setdefault(
+            store_id,
+            {
+                "store_id": store_id,
+                "store_name": store_name,
+                "today_count": 0,
+                "source_bound_count": 0,
+                "undated_count": 0,
+                "target": targets.get(store_id, 0),
+            },
+        )
+
+    return sorted(summary.values(), key=lambda item: (str(item["store_name"]), str(item["store_id"])))
+
+
+def _has_source_binding(candidate: SignalMatch | SignalCandidate | SignalRejection) -> bool:
+    return bool(
+        str(getattr(candidate, "source_store_id", "")).strip()
+        or str(getattr(candidate, "source_store_name", "")).strip()
+    )
+
+
+def _source_summary(candidate: SignalMatch | SignalCandidate | SignalRejection) -> str:
+    parts: list[str] = []
+    if str(getattr(candidate, "source_store_id", "")).strip():
+        parts.append(f"store_id={getattr(candidate, 'source_store_id')}")
+    if str(getattr(candidate, "source_store_name", "")).strip():
+        parts.append(str(getattr(candidate, "source_store_name")))
+    if str(getattr(candidate, "source_channel", "")).strip():
+        parts.append(f"渠道={getattr(candidate, 'source_channel')}")
+    return " / ".join(parts)
 
 
 def _engagement_bonus(candidate: SignalCandidate) -> int:
@@ -875,3 +1124,14 @@ def _parse_datetime(value: str | None) -> datetime | None:
         return datetime.fromisoformat(value)
     except ValueError:
         return None
+
+
+def _is_same_local_day(value: str | None, now: datetime) -> bool:
+    published_at = _parse_datetime(value)
+    if published_at is None:
+        return False
+    if published_at.tzinfo is None and now.tzinfo is not None:
+        published_at = published_at.replace(tzinfo=now.tzinfo)
+    elif published_at.tzinfo is not None and now.tzinfo is not None:
+        published_at = published_at.astimezone(now.tzinfo)
+    return published_at.date() == now.date()

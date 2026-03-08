@@ -59,8 +59,11 @@ class SignalRule:
     focus_author_names: list[str] = field(default_factory=list)
     focus_author_tags: list[str] = field(default_factory=list)
     focus_verified_labels: list[str] = field(default_factory=list)
+    store_aliases: list[str] = field(default_factory=list)
     min_follower_count: int = 0
+    daily_target_count: int = 0
     require_poi: bool = False
+    require_source_store: bool = False
     min_score: int = 5
 
 
@@ -85,6 +88,11 @@ class SignalCandidate:
     verified_label: str = ""
     follower_count: int = 0
     author_tags: list[str] = field(default_factory=list)
+    source_store_id: str = ""
+    source_store_name: str = ""
+    source_channel: str = ""
+    campaign_name: str = ""
+    content_library_tag: str = ""
 
 
 @dataclass(slots=True)
@@ -115,6 +123,11 @@ class SignalMatch:
     follower_count: int = 0
     author_tags: list[str] = field(default_factory=list)
     focus_author_hits: list[str] = field(default_factory=list)
+    source_store_id: str = ""
+    source_store_name: str = ""
+    source_channel: str = ""
+    campaign_name: str = ""
+    content_library_tag: str = ""
     attribution_summary: str = ""
 
 
@@ -141,3 +154,8 @@ class SignalRejection:
     verified_label: str = ""
     follower_count: int = 0
     author_tags: list[str] = field(default_factory=list)
+    source_store_id: str = ""
+    source_store_name: str = ""
+    source_channel: str = ""
+    campaign_name: str = ""
+    content_library_tag: str = ""

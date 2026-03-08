@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import unittest
+from datetime import datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import Mock
@@ -43,6 +44,7 @@ class SignalPipelineTests(unittest.TestCase):
             profile_dir = Path(tmpdir)
             signal_inputs = profile_dir / "signal_inputs"
             signal_inputs.mkdir()
+            now = datetime.now(TZ).replace(hour=12, minute=0, second=0, microsecond=0)
             (profile_dir / "store_signal_rules.json").write_text(
                 json.dumps(
                     {
@@ -63,6 +65,7 @@ class SignalPipelineTests(unittest.TestCase):
                                 "focus_author_names": ["北京探店小林"],
                                 "focus_author_tags": ["北京探店"],
                                 "focus_verified_labels": ["探店达人"],
+                                "daily_target_count": 3,
                                 "min_follower_count": 10000,
                                 "require_poi": True,
                                 "min_score": 8,
@@ -103,10 +106,15 @@ class SignalPipelineTests(unittest.TestCase):
                                 "verified_label": "探店达人",
                                 "follower_count": 56000,
                                 "author_tags": ["北京探店", "美食博主"],
+                                "source_store_id": "bj-fzy",
+                                "source_store_name": "凤状元·江西小炒·非遗米粉(食宝街店)",
+                                "source_channel": "碰一碰",
+                                "campaign_name": "三月拉新",
+                                "content_library_tag": "食宝街门店内容库",
                                 "ip_location": "北京",
                                 "topic_tags": ["食宝街", "江西小炒"],
                                 "url": "https://example.com/dy/001",
-                                "published_at": "2026-03-07T12:00:00+08:00",
+                                "published_at": now.isoformat(),
                                 "like_count": 120,
                                 "comment_count": 10,
                                 "share_count": 4,
@@ -132,7 +140,7 @@ class SignalPipelineTests(unittest.TestCase):
                                 "ip_location": "北京",
                                 "topic_tags": ["食宝街", "江西小炒"],
                                 "url": "https://example.com/xhs/001",
-                                "published_at": "2026-03-07T13:00:00+08:00",
+                                "published_at": now.replace(hour=13).isoformat(),
                                 "like_count": 80,
                                 "favorite_count": 18,
                                 "comment_count": 5,
@@ -169,16 +177,22 @@ class SignalPipelineTests(unittest.TestCase):
             self.assertFalse(result.delivered)
             self.assertFalse(result.dispatch_recorded)
             self.assertIn("门店实时舆情精筛结果", result.report_text)
+            self.assertIn("今日相关内容: 2", result.report_text)
+            self.assertIn("目标3条", result.report_text)
             self.assertIn("凤状元·江西小炒·非遗米粉(食宝街店)", result.report_text)
             self.assertIn("认证信息: 探店达人", result.report_text)
             self.assertIn("粉丝量: 56000", result.report_text)
             self.assertIn("重点达人命中:", result.report_text)
+            self.assertIn("门店归属: store_id=bj-fzy", result.report_text)
             self.assertIn("北京探店小林", result.report_text)
             self.assertIn("北京探店", result.report_text)
             self.assertIn("探店达人", result.report_text)
             self.assertIn("# 门店实时舆情看板", result.board_text)
+            self.assertIn("## 今日门店KPI达标", result.board_text)
+            self.assertIn("待补1条", result.board_text)
             self.assertIn("粉丝56000", result.board_text)
             self.assertIn("重点名单", result.board_text)
+            self.assertIn("门店归属", result.board_text)
             self.assertIn("当前窗口数据不足", result.board_text)
             self.assertIsNotNone(storage.get_last_success("signal_watchboard"))
 

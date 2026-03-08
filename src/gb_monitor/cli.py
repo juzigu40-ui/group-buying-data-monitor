@@ -29,7 +29,7 @@ from gb_monitor.signal_rules import (
     matches_to_json,
     review_candidates,
 )
-from gb_monitor.signal_pipeline import run_profile_signal_pipeline
+from gb_monitor.signal_pipeline import resolve_profile_signal_input_paths, run_profile_signal_pipeline
 from gb_monitor.store_registry import (
     enabled_store_ids_by_platform,
     enabled_platform_binding_counts,
@@ -163,6 +163,17 @@ def build_parser() -> argparse.ArgumentParser:
         "--output",
         default="",
         help="Optional output markdown path; if omitted, print to stdout",
+    )
+
+    profile_readiness = sub.add_parser(
+        "profile-readiness",
+        help="Check whether one local profile is ready to run",
+    )
+    profile_readiness.add_argument("--profile-dir", required=True, help="Local profile directory")
+    profile_readiness.add_argument(
+        "--require-feishu",
+        action="store_true",
+        help="Fail if GBM_FEISHU_WEBHOOK is missing",
     )
 
     latest_metrics = sub.add_parser(
@@ -422,6 +433,65 @@ def main() -> int:
         print(guide)
         return 0
 
+    if args.command == "profile-readiness":
+        profile_dir = Path(args.profile_dir)
+        login_inventory = profile_dir / "login_inventory.local.json"
+        store_registry = profile_dir / "stores_registry.json"
+        signal_rules = profile_dir / "store_signal_rules.json"
+        signal_inputs = resolve_profile_signal_input_paths(profile_dir)
+        missing: list[str] = []
+        kpi_mode_enabled = False
+        source_store_binding_ready = False
+        if not login_inventory.exists():
+            missing.append("login_inventory.local.json")
+        if not store_registry.exists():
+            missing.append("stores_registry.json")
+        signal_ready = signal_rules.exists()
+        if signal_ready and not signal_inputs:
+            missing.append("signal_inputs")
+        if signal_ready:
+            rules = load_signal_rules(signal_rules)
+            kpi_mode_enabled = any(rule.require_source_store or rule.daily_target_count > 0 for rule in rules)
+            if signal_inputs:
+                for path in signal_inputs:
+                    for candidate in load_signal_candidates(path):
+                        if candidate.source_store_id or candidate.source_store_name:
+                            source_store_binding_ready = True
+                            break
+                    if source_store_binding_ready:
+                        break
+            if kpi_mode_enabled and not source_store_binding_ready:
+                missing.append("source_store_binding")
+        if args.require_feishu and not settings.feishu_webhook:
+            missing.append("GBM_FEISHU_WEBHOOK")
+
+        print(f"profile_dir={profile_dir.as_posix()}")
+        print(f"login_inventory={'ok' if login_inventory.exists() else 'missing'}")
+        print(f"stores_registry={'ok' if store_registry.exists() else 'missing'}")
+        print(f"signal_rules={'ok' if signal_ready else 'missing(optional)'}")
+        print(
+            "signal_inputs="
+            + (",".join(path.name for path in signal_inputs) if signal_inputs else ("missing" if signal_ready else "not_required"))
+        )
+        if signal_ready:
+            print(f"store_kpi_mode={'enabled' if kpi_mode_enabled else 'disabled'}")
+            print(
+                "source_store_binding="
+                + (
+                    "ok"
+                    if source_store_binding_ready
+                    else ("missing" if kpi_mode_enabled else "not_required")
+                )
+            )
+        print(f"feishu_webhook={'ok' if settings.feishu_webhook else 'missing'}")
+        if missing:
+            print("profile_ready=False")
+            print("missing=" + ",".join(missing))
+            return 1
+        print("profile_ready=True")
+        print("next_step=run_profile")
+        return 0
+
     if args.command == "latest-metrics":
         rows = storage.latest_store_metrics(
             store_id=args.store_id,
@@ -463,7 +533,7 @@ def main() -> int:
         if args.json:
             print(json.dumps(matches_to_json(matches), ensure_ascii=False, indent=2))
         else:
-            report = build_signal_report(now, matches)
+            report = build_signal_report(now, matches, all_matches=matches, rules=rules)
             print(report)
             delivered = False
             if args.notify:
@@ -488,7 +558,7 @@ def main() -> int:
             min_score_override=(args.min_score if args.min_score > 0 else None),
             allow_ambiguous=False,
         )
-        board = build_signal_dashboard(now, matches, rejections)
+        board = build_signal_dashboard(now, matches, rejections, all_matches=matches, rules=rules)
         if args.output:
             path = Path(args.output)
             path.write_text(board + "\n", encoding="utf-8")

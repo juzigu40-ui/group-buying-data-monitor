@@ -149,10 +149,21 @@ def run_profile_signal_pipeline(
         matches=filtered_matches,
         window_hours=max(attribution_window_hours, 1),
     )
-    report_text = build_signal_report(now, filtered_matches)
+    report_text = build_signal_report(
+        now,
+        filtered_matches,
+        all_matches=matches,
+        rules=rules,
+    )
     if matches and not filtered_matches:
         report_text += "\n所有命中内容都在去重窗口内，当前无新增派送。"
-    board_text = build_signal_dashboard(now, filtered_matches, rejections)
+    board_text = build_signal_dashboard(
+        now,
+        filtered_matches,
+        rejections,
+        all_matches=matches,
+        rules=rules,
+    )
 
     delivered = False
     dispatch_recorded = False
