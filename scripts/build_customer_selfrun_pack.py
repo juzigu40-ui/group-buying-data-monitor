@@ -40,6 +40,7 @@ CUSTOMER_PROFILE_ITEMS = [
 ]
 
 WINDOWS_ROOT_ITEMS = [
+    "打开橘子谷门店监控（Windows）.bat",
     "双击这里启动系统（Windows）.bat",
     "RUN_ME_FIRST.txt",
     ".env.example",

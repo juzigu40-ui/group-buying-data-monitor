@@ -613,10 +613,18 @@ class ControlCenterApp:
 
         start_tab = self._make_scrolled_body(start_tab_shell)
 
-        intro = (
-            "第一次使用时，只需要接好飞书、设好监控时间、填好门店平台关系。后面就按三个主按钮顺序往下走。"
-        )
+        intro = "第一次使用时，只需要接好飞书、设好刷新时间、填好门店和平台关系。后面老板主要在飞书里看日报、预警和门店达标情况。"
         ttk.Label(start_tab, text=intro, wraplength=1240, justify="left", style="Muted.TLabel").pack(anchor="w", pady=(0, 12))
+
+        feishu_card = ttk.LabelFrame(start_tab, text="老板以后怎么用", padding=16, style="Card.TLabelframe")
+        feishu_card.pack(fill="x", pady=(0, 12))
+        ttk.Label(
+            feishu_card,
+            text="1. 打开程序，确认飞书和刷新时间没问题。\n2. 点“开始联通测试”或按计划运行。\n3. 老板主要在飞书里看：哪个门店达标、哪个门店掉队、今天和昨天有什么变化。",
+            wraplength=1240,
+            justify="left",
+            style="Muted.TLabel",
+        ).pack(anchor="w")
 
         top = ttk.Frame(start_tab, style="App.TFrame")
         top.pack(fill="x", pady=(0, 12))
@@ -784,7 +792,7 @@ class ControlCenterApp:
         ttk.Label(frame, text="橘子谷门店监控", style="HeroTitle.TLabel").pack(anchor="w")
         ttk.Label(
             frame,
-            text="把门店内容监管、外卖经营数据、飞书预警和 OpenClaw 联动收进一个真正能落地的门店控制台。",
+            text="把门店内容监管、外卖经营数据和飞书预警收进一个真正能落地的门店控制台。老板平时主要在飞书里看日报、预警和门店达标状态。",
             style="HeroSub.TLabel",
         ).pack(anchor="w", pady=(4, 0))
 
@@ -794,10 +802,10 @@ class ControlCenterApp:
         right = ttk.Frame(parent, style="App.TFrame")
         right.pack(side="right")
         items = [
-            ("start", "快速开始"),
-            ("stores", "门店与平台"),
-            ("login", "登录与联动"),
-            ("results", "结果中心"),
+            ("start", "开始使用"),
+            ("stores", "门店配置"),
+            ("login", "平台登录"),
+            ("results", "飞书结果"),
         ]
         for key, title in items:
             button = ttk.Button(
@@ -810,7 +818,7 @@ class ControlCenterApp:
             self.nav_buttons[key] = button
         ttk.Label(
             right,
-            text="固定一台正式运行电脑，后面只需要打开程序、看飞书、看结果。",
+            text="固定一台正式运行电脑，后面只需要打开程序、看飞书、看门店结果。",
             style="Muted.TLabel",
         ).pack(anchor="e", pady=(4, 0))
 
@@ -869,7 +877,7 @@ class ControlCenterApp:
         self.summary_vars["review_interval"].set(f"{review_value} 分钟")
 
     def _build_basic_settings(self, parent: ttk.Frame) -> None:
-        frame = ttk.LabelFrame(parent, text="第一步：接好飞书", padding=16, style="Card.TLabelframe")
+        frame = ttk.LabelFrame(parent, text="第一步：接上飞书群", padding=16, style="Card.TLabelframe")
         frame.pack(fill="both", expand=True)
         fields = [
             ("GBM_FEISHU_WEBHOOK", "飞书收消息地址"),
@@ -881,23 +889,30 @@ class ControlCenterApp:
             entry.insert(0, self.env_values.get(key, ""))
             entry.grid(row=idx, column=1, sticky="ew", pady=6, padx=(8, 0))
             self.entries[key] = entry
+        ttk.Label(
+            frame,
+            text="把老板平时要看的飞书群机器人地址贴到这里。以后门店日报、异常提醒、舆情汇总都从这个群发出去。",
+            wraplength=760,
+            justify="left",
+            style="Muted.TLabel",
+        ).grid(row=len(fields), column=0, columnspan=2, sticky="w", pady=(10, 0))
         frame.columnconfigure(1, weight=1)
 
     def _build_schedule_settings(self, parent: ttk.Frame) -> None:
-        frame = ttk.LabelFrame(parent, text="第二步：设置监控时间", padding=16, style="Card.TLabelframe")
+        frame = ttk.LabelFrame(parent, text="第二步：设定刷新时间", padding=16, style="Card.TLabelframe")
         frame.pack(fill="both", expand=True)
         ttk.Label(
             frame,
-            text="频率直接填分钟：30=每30分钟，60=每1小时，120=每2小时。高峰期想更密，就填 10 或 30。",
+            text="频率直接填分钟：30=每30分钟，60=每1小时，120=每2小时。高峰期想更密，就填 10 或 30。这里填的是自动刷新节奏，不是老板手动操作次数。",
             wraplength=380,
             justify="left",
         ).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 8))
         core_fields = [
-            ("GBM_SIGNAL_WINDOW_START", "门店内容监控开始"),
-            ("GBM_SIGNAL_WINDOW_END", "门店内容监控结束"),
-            ("GBM_SIGNAL_INTERVAL_MINUTES", "门店内容更新频率（分钟）"),
-            ("GBM_REVIEW_INTERVAL_MINUTES", "评价更新频率（分钟）"),
-            ("GBM_DELIVERY_INTERVAL_MINUTES", "外卖更新频率（分钟）"),
+            ("GBM_SIGNAL_WINDOW_START", "内容监控开始时间"),
+            ("GBM_SIGNAL_WINDOW_END", "内容监控结束时间"),
+            ("GBM_SIGNAL_INTERVAL_MINUTES", "内容刷新频率（分钟）"),
+            ("GBM_REVIEW_INTERVAL_MINUTES", "评价刷新频率（分钟）"),
+            ("GBM_DELIVERY_INTERVAL_MINUTES", "外卖经营数据刷新频率（分钟）"),
         ]
         for idx, (key, label) in enumerate(core_fields, start=1):
             ttk.Label(frame, text=label).grid(row=idx, column=0, sticky="w", pady=4)
@@ -912,12 +927,12 @@ class ControlCenterApp:
         advanced_frame = ttk.Frame(frame, style="App.TFrame")
         advanced_frame.grid(row=len(core_fields) + 2, column=0, columnspan=2, sticky="ew")
         advanced_fields = [
-            ("GBM_REVIEW_WINDOW_START", "评价抓取开始"),
-            ("GBM_REVIEW_WINDOW_END", "评价抓取结束"),
-            ("GBM_DELIVERY_LUNCH_START", "外卖中午重点监控开始"),
-            ("GBM_DELIVERY_LUNCH_END", "外卖中午重点监控结束"),
-            ("GBM_DELIVERY_DINNER_START", "外卖晚上重点监控开始"),
-            ("GBM_DELIVERY_DINNER_END", "外卖晚上重点监控结束"),
+            ("GBM_REVIEW_WINDOW_START", "评价监控开始时间"),
+            ("GBM_REVIEW_WINDOW_END", "评价监控结束时间"),
+            ("GBM_DELIVERY_LUNCH_START", "外卖午餐营业时段开始"),
+            ("GBM_DELIVERY_LUNCH_END", "外卖午餐营业时段结束"),
+            ("GBM_DELIVERY_DINNER_START", "外卖晚餐营业时段开始"),
+            ("GBM_DELIVERY_DINNER_END", "外卖晚餐营业时段结束"),
         ]
         for idx, (key, label) in enumerate(advanced_fields):
             ttk.Label(advanced_frame, text=label).grid(row=idx, column=0, sticky="w", pady=4)
@@ -944,7 +959,7 @@ class ControlCenterApp:
         frame.pack(fill="x", pady=(0, 12))
         ttk.Label(
             frame,
-            text="新增门店后，这里会自动出现。老板只需要填每天希望每个门店完成多少条内容。",
+            text="新增门店后，这里会自动出现。老板只需要填每天希望每个门店完成多少条内容，后面飞书就能直接看达标没达标。",
             style="Muted.TLabel",
         ).grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 10))
         ttk.Label(frame, text="门店").grid(row=1, column=0, sticky="w")
@@ -963,15 +978,15 @@ class ControlCenterApp:
             self.target_source_flags[target.store_id] = flag
 
     def _build_openclaw_bridge(self, parent: ttk.Frame) -> None:
-        frame = ttk.LabelFrame(parent, text="和 OpenClaw 丝滑联动", padding=14, style="Card.TLabelframe")
+        frame = ttk.LabelFrame(parent, text="采集执行助手（可选）", padding=14, style="Card.TLabelframe")
         frame.pack(fill="x", pady=(0, 12))
         ttk.Label(
             frame,
-            text="如果你们已经在飞书里用 OpenClaw，就继续让 OpenClaw 负责前置登录、采集和执行；橘子谷门店监控负责把采集结果按门店归因、算 KPI、对比今日/昨日，再把结果继续推回飞书。老板以后还是在同一个飞书体系里看结果，不需要换工作习惯。",
+            text="如果你们后面还想保留 OpenClaw，最好的方式不是让它继续直接给老板推泛消息，而是让它退到后台去做登录、采集、补抓。真正负责按门店归因、去噪、算 KPI、对比今天和昨天，再统一往飞书汇报的，是橘子谷门店监控。",
             wraplength=1180,
             justify="left",
         ).grid(row=0, column=0, columnspan=4, sticky="w", pady=(0, 10))
-        ttk.Button(frame, text="打开 OpenClaw 内容目录", style="Secondary.TButton", command=self.open_signal_input_dir).grid(
+        ttk.Button(frame, text="打开采集投递目录", style="Secondary.TButton", command=self.open_signal_input_dir).grid(
             row=1, column=0, padx=(0, 8), pady=4, sticky="w"
         )
         ttk.Button(frame, text="打开经营数据目录", style="Secondary.TButton", command=self.open_snapshot_dir).grid(
@@ -979,7 +994,7 @@ class ControlCenterApp:
         )
         ttk.Label(
             frame,
-            text="以后只要 OpenClaw 把采集结果放进这两个目录，当前系统就能继续算门店归因、监控时段频率、飞书推送和 KPI 达标状态。",
+            text="如果以后还要兼容 OpenClaw 或别的采集机器人，只要把采集结果投递进这两个目录，当前系统就会继续负责门店归因、监控时段、飞书推送和 KPI 达标状态。老板以后主要还是看我们的机器人，不需要同时盯两套结果。",
         ).grid(row=2, column=0, columnspan=4, sticky="w", pady=(8, 0))
 
     def _build_registry_bindings(self, parent: ttk.Frame) -> None:
@@ -989,13 +1004,13 @@ class ControlCenterApp:
         toolbar.grid(row=0, column=0, columnspan=9, sticky="ew", pady=(0, 10))
         ttk.Label(
             toolbar,
-            text="后面如果新增门店或新增平台，直接点“新增门店/平台”即可，不需要再改代码。",
+            text="后面如果新增门店、新开平台、改账号备注，直接在这里增删改就行，不需要再改代码。",
         ).pack(side="left")
         ttk.Button(toolbar, text="新增门店/平台", style="Secondary.TButton", command=self.add_binding_row).pack(
             side="right"
         )
 
-        headings = ["城市/区域", "门店名称", "监控平台", "连接方式", "账号备注", "谁来登录", "启用", "打开后台", "删除"]
+        headings = ["城市/区域", "门店名称", "监控平台", "登录方式", "平台账号备注", "登录负责人", "启用", "打开后台", "删除"]
         for col, title in enumerate(headings):
             ttk.Label(frame, text=title).grid(row=1, column=col, sticky="w", padx=(0, 8))
 
@@ -1077,11 +1092,11 @@ class ControlCenterApp:
         frame.columnconfigure(5, weight=1)
 
     def _build_session_bindings(self, parent: ttk.Frame) -> None:
-        frame = ttk.LabelFrame(parent, text="后台登录状态", padding=14, style="Card.TLabelframe")
+        frame = ttk.LabelFrame(parent, text="平台登录状态", padding=14, style="Card.TLabelframe")
         frame.pack(fill="x", pady=(0, 12))
         ttk.Label(
             frame,
-            text="你不需要自己去找任何会话文件。首次在这台电脑上登录一次后，系统就默认把登录状态绑定在这台正式运行电脑上。只有平台失效时，再点“打开对应后台”补一次。",
+            text="你不需要自己去找任何本地会话文件。首次在这台正式运行电脑上登录一次后，系统就默认把登录状态记在这台电脑上。只有平台失效时，再点“打开对应后台”补一次。",
             wraplength=1100,
             justify="left",
         ).grid(row=0, column=0, columnspan=8, sticky="w", pady=(0, 8))
@@ -1137,7 +1152,7 @@ class ControlCenterApp:
         frame.pack(fill="x", pady=(0, 12))
         ttk.Label(
             frame,
-            text="第一次只需要点下面三个主按钮。先保存，再试发飞书，最后开始联通测试。联通测试跑通后，日常只需要打开程序、看飞书、看结果。",
+            text="第一次只需要点下面三个主按钮：先保存设置，再发飞书测试，最后开始联通测试。联通测试跑通后，老板平时主要看飞书，不需要天天进来研究程序。",
             style="Muted.TLabel",
         ).grid(
             row=0, column=0, columnspan=6, sticky="w", pady=(0, 10)
@@ -1151,17 +1166,17 @@ class ControlCenterApp:
             ttk.Button(frame, text=label, style=style_name, command=action).grid(row=1, column=idx, padx=(0, 10), pady=4)
 
     def _build_result_tools(self, parent: ttk.Frame) -> None:
-        frame = ttk.LabelFrame(parent, text="结果中心", padding=14, style="Card.TLabelframe")
+        frame = ttk.LabelFrame(parent, text="飞书结果与回看", padding=14, style="Card.TLabelframe")
         frame.pack(fill="x", pady=(0, 12))
         ttk.Label(
             frame,
-            text="这里主要用于看结果、查看后台清单、查看 OpenClaw 输入目录。第一次部署不是必须全点，平时主要看结果和运行日志。",
+            text="老板平时主要在飞书里看结果。这里主要用于回看本地结果、查看后台登录清单，以及在需要时打开采集投递目录。",
             style="Muted.TLabel",
         ).grid(row=0, column=0, columnspan=5, sticky="w", pady=(0, 10))
         buttons: list[tuple[str, Callable[[], None]]] = [
             ("查看结果", self.open_results),
             ("打开后台登录清单", self.open_login_checklist),
-            ("打开 OpenClaw 内容目录", self.open_signal_input_dir),
+            ("打开采集投递目录", self.open_signal_input_dir),
             ("打开经营数据目录", self.open_snapshot_dir),
             ("打开认证目录", self.open_auth_dir),
         ]
@@ -1186,7 +1201,7 @@ class ControlCenterApp:
             font=(self.font_family, 12),
         )
         self.output.pack(fill="both", expand=True)
-        self.output.insert("end", "橘子谷门店监控已启动。建议先点“① 保存设置”，再点“② 发送飞书测试”。\n")
+        self.output.insert("end", "橘子谷门店监控已启动。建议先点“① 保存设置”，再点“② 发送飞书测试”，最后点“③ 开始联通测试”。\n")
         self.output.configure(state="disabled")
 
     def _append_output(self, text: str) -> None:
