@@ -11,6 +11,7 @@ from gb_monitor.control_center import (
     load_env_values,
     load_registry_bindings,
     load_store_targets,
+    platform_display_name,
     save_registry_bindings,
     save_env_values,
     save_store_targets,
@@ -18,6 +19,12 @@ from gb_monitor.control_center import (
 
 
 class ControlCenterTests(unittest.TestCase):
+    def test_platform_display_name_uses_chinese_labels(self) -> None:
+        self.assertEqual(platform_display_name("meituan"), "美团外卖")
+        self.assertEqual(platform_display_name("dianping"), "大众点评")
+        self.assertEqual(platform_display_name("douyin"), "抖音")
+        self.assertEqual(platform_display_name("unknown"), "unknown")
+
     def test_env_round_trip_preserves_existing_lines(self) -> None:
         with TemporaryDirectory() as tmpdir:
             env_path = Path(tmpdir) / ".env"

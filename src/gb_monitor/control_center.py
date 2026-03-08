@@ -73,6 +73,17 @@ INTERVAL_FIELDS = {
     "GBM_DELIVERY_INTERVAL_MINUTES",
 }
 
+PLATFORM_LABELS = {
+    "amap": "高德地图",
+    "dianping": "大众点评",
+    "douyin": "抖音",
+    "eleme": "饿了么",
+    "jdwm": "京东外卖",
+    "meituan": "美团外卖",
+    "shipinhao": "视频号",
+    "xiaohongshu": "小红书",
+}
+
 
 def load_env_values(path: Path) -> dict[str, str]:
     values: dict[str, str] = {}
@@ -258,6 +269,11 @@ def _is_valid_hhmm(value: str) -> bool:
     return 0 <= hour <= 23 and 0 <= minute <= 59
 
 
+def platform_display_name(platform: str) -> str:
+    key = platform.strip().lower()
+    return PLATFORM_LABELS.get(key, platform.strip() or platform)
+
+
 class ControlCenterApp:
     def __init__(self, root_dir: Path, profile_dir: Path, env_path: Path, rules_path: Path, registry_path: Path) -> None:
         if tk is None or messagebox is None or ttk is None:
@@ -388,7 +404,9 @@ class ControlCenterApp:
         for idx, binding in enumerate(self.registry_bindings, start=1):
             key = (binding.store_id, binding.platform)
             ttk.Label(frame, text=binding.store_name).grid(row=idx, column=0, sticky="w", pady=4)
-            ttk.Label(frame, text=binding.platform).grid(row=idx, column=1, sticky="w", pady=4, padx=(8, 0))
+            ttk.Label(frame, text=platform_display_name(binding.platform)).grid(
+                row=idx, column=1, sticky="w", pady=4, padx=(8, 0)
+            )
 
             auth_var = tk.StringVar(value=binding.auth_mode)
             auth_box = ttk.Combobox(frame, textvariable=auth_var, values=auth_options, width=10, state="readonly")
