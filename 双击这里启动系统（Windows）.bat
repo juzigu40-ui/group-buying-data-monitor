@@ -4,6 +4,8 @@ set "SOURCE_DIR=%~dp0"
 if "%SOURCE_DIR:~-1%"=="\" set "SOURCE_DIR=%SOURCE_DIR:~0,-1%"
 set "APP_HOME=%PUBLIC%\GBM_Runtime\shibaojie"
 set "LOG_FILE=%APP_HOME%\startup.log"
+set "PYTHON_BIN="
+set "PYTHON_DESC="
 
 if /I not "%SOURCE_DIR%"=="%APP_HOME%" (
   echo [0/5] Preparing runtime folder...
@@ -16,38 +18,11 @@ cd /d "%APP_HOME%"
 echo start_time=%date% %time% > "%LOG_FILE%"
 echo app_home=%APP_HOME% >> "%LOG_FILE%"
 
-set "PYTHON_BIN="
-set "BOOTSTRAP_CMD="
-
-where py >nul 2>nul
-if errorlevel 1 goto TRY_PYTHON
-py -3 --version >nul 2>nul
-if errorlevel 1 goto TRY_PYTHON
-set "BOOTSTRAP_CMD=py -3"
-set "PYTHON_BIN=py -3"
-goto CHECK_PYTHON
-
-:TRY_PYTHON
-where python >nul 2>nul
-if errorlevel 1 goto NO_PYTHON
-set "BOOTSTRAP_CMD=python"
-set "PYTHON_BIN=python"
-goto CHECK_PYTHON
-
-:NO_PYTHON
-echo.
-echo Python 3 was not found on this computer.
-echo Please install Python 3 for Windows and check "Add Python to PATH".
-echo Download: https://www.python.org/downloads/windows/
-echo.
-pause
-exit /b 1
-
 :CHECK_PYTHON
 echo [1/5] Checking Python...
-echo bootstrap=%BOOTSTRAP_CMD% >> "%LOG_FILE%"
-%PYTHON_BIN% --version >> "%LOG_FILE%" 2>&1
-if errorlevel 1 goto PYTHON_FAILED
+call :detect_python
+if errorlevel 1 goto NO_PYTHON
+echo python=%PYTHON_DESC% >> "%LOG_FILE%"
 
 echo [2/5] Checking tkinter...
 %PYTHON_BIN% -c "import tkinter" >> "%LOG_FILE%" 2>&1
@@ -72,6 +47,33 @@ if errorlevel 1 goto RUN_FAILED
 endlocal
 exit /b 0
 
+:detect_python
+py -3 -c "import sys; print(sys.executable)" > "%APP_HOME%\python_path.txt" 2>> "%LOG_FILE%"
+if not errorlevel 1 (
+  set /p DETECTED_PY=<"%APP_HOME%\python_path.txt"
+  del "%APP_HOME%\python_path.txt" >nul 2>nul
+  set "PYTHON_BIN=py -3"
+  set "PYTHON_DESC=%DETECTED_PY%"
+  exit /b 0
+)
+del "%APP_HOME%\python_path.txt" >nul 2>nul
+
+for /f "delims=" %%P in ('where python 2^>nul') do (
+  echo %%P | find /I "WindowsApps" >nul
+  if errorlevel 1 (
+    "%%P" -c "import sys; print(sys.executable)" > "%APP_HOME%\python_path.txt" 2>> "%LOG_FILE%"
+    if not errorlevel 1 (
+      set /p DETECTED_PY=<"%APP_HOME%\python_path.txt"
+      del "%APP_HOME%\python_path.txt" >nul 2>nul
+      set "PYTHON_BIN=%%P"
+      set "PYTHON_DESC=%DETECTED_PY%"
+      exit /b 0
+    )
+    del "%APP_HOME%\python_path.txt" >nul 2>nul
+  )
+)
+exit /b 1
+
 :COPY_FAILED
 echo.
 echo Failed to prepare the runtime folder.
@@ -81,9 +83,11 @@ echo.
 pause
 exit /b 1
 
-:PYTHON_FAILED
+:NO_PYTHON
 echo.
-echo Python check failed.
+echo Python 3 was not found on this computer.
+echo Please install official Python 3 for Windows first.
+echo Download: https://www.python.org/downloads/windows/
 echo Please send me a screenshot of this window.
 echo Log file: %LOG_FILE%
 echo.
