@@ -69,6 +69,11 @@ def copy_item(src: Path, dst: Path) -> None:
             ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "*.pyo", "*.egg-info"),
         )
         return
+    if src.suffix.lower() in {".bat", ".cmd"}:
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        text = src.read_text(encoding="utf-8")
+        dst.write_text(text.replace("\r\n", "\n").replace("\n", "\r\n"), encoding="utf-8", newline="")
+        return
     dst.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(src, dst)
 
