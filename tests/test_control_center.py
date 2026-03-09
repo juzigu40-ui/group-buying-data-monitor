@@ -2,13 +2,16 @@ from __future__ import annotations
 
 import json
 import unittest
+from datetime import datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from zoneinfo import ZoneInfo
 
 from gb_monitor.control_center import (
     PlatformBindingConfig,
     SessionBindingConfig,
     StoreTargetConfig,
+    compute_connection_snapshot,
     default_session_file,
     load_env_values,
     load_registry_bindings,
@@ -194,6 +197,46 @@ class ControlCenterTests(unittest.TestCase):
             self.assertEqual(reloaded[0].status, "可复用")
             self.assertEqual(reloaded[0].last_login_at, "2026-03-08 20:00")
             self.assertEqual(reloaded[0].note, "首登完成")
+
+    def test_connection_snapshot_reports_normal_when_recent_metrics_exist(self) -> None:
+        snapshot = compute_connection_snapshot(
+            binding=SessionBindingConfig(
+                store_id="s1",
+                store_name="门店一",
+                platform="meituan",
+                machine_alias="DESKTOP-001",
+                session_file="auth/meituan.state.json",
+                status="可复用",
+                last_login_at="",
+                note="",
+            ),
+            env_values={"GBM_DELIVERY_INTERVAL_MINUTES": "30", "GBM_REVIEW_INTERVAL_MINUTES": "60"},
+            task_success_map={"delivery_meituan": datetime(2026, 3, 9, 9, 0, tzinfo=ZoneInfo("Asia/Shanghai"))},
+            latest_metric_map={("s1", "meituan"): datetime(2026, 3, 9, 8, 55, tzinfo=ZoneInfo("Asia/Shanghai"))},
+            now=datetime(2026, 3, 9, 9, 20, tzinfo=ZoneInfo("Asia/Shanghai")),
+        )
+        self.assertEqual(snapshot.connection_status, "正常")
+        self.assertIn("最近这家门店已经成功出数", snapshot.connection_hint)
+
+    def test_connection_snapshot_reports_relogin_when_marked_and_stale(self) -> None:
+        snapshot = compute_connection_snapshot(
+            binding=SessionBindingConfig(
+                store_id="s1",
+                store_name="门店一",
+                platform="dianping",
+                machine_alias="DESKTOP-001",
+                session_file="auth/dianping.state.json",
+                status="需补登录",
+                last_login_at="",
+                note="",
+            ),
+            env_values={"GBM_DELIVERY_INTERVAL_MINUTES": "30", "GBM_REVIEW_INTERVAL_MINUTES": "60"},
+            task_success_map={},
+            latest_metric_map={},
+            now=datetime(2026, 3, 9, 9, 20, tzinfo=ZoneInfo("Asia/Shanghai")),
+        )
+        self.assertEqual(snapshot.connection_status, "需要补登")
+        self.assertIn("需要补登", snapshot.connection_hint)
 
 
 if __name__ == "__main__":

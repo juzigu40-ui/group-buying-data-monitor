@@ -10,7 +10,7 @@ import subprocess
 import sys
 import threading
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from queue import Empty, Queue
 from typing import Callable
@@ -22,6 +22,8 @@ except ModuleNotFoundError:  # pragma: no cover - depends on local Python build
     tk = None
     messagebox = None
     ttk = None
+
+from gb_monitor.storage import Storage
 
 
 @dataclass(slots=True)
@@ -54,6 +56,16 @@ class SessionBindingConfig:
     status: str
     last_login_at: str
     note: str
+
+
+@dataclass(slots=True)
+class ConnectionSnapshot:
+    store_id: str
+    platform: str
+    connection_status: str
+    connection_hint: str
+    last_success_at: str
+    last_metric_at: str
 
 
 ENV_FIELD_ORDER = [
@@ -109,9 +121,9 @@ AUTH_MODE_DISPLAY_TO_KEY = {label: key for key, label in AUTH_MODE_LABELS.items(
 AUTH_MODE_CHOICE_VALUES = tuple(AUTH_MODE_LABELS[key] for key in ("manual", "cookie", "api"))
 
 SESSION_STATUS_LABELS = {
-    "未初始化": "待登录",
-    "可复用": "已可用",
-    "需补登录": "需要重登",
+    "未初始化": "未确认",
+    "可复用": "已确认",
+    "需补登录": "需补登",
     "已停用": "暂停使用",
 }
 SESSION_STATUS_DISPLAY_TO_KEY = {label: key for key, label in SESSION_STATUS_LABELS.items()}
@@ -129,6 +141,22 @@ PLATFORM_PORTAL_URLS = {
     "meituan": "https://e.waimai.meituan.com/",
     "shipinhao": "https://channels.weixin.qq.com/",
     "xiaohongshu": "https://creator.xiaohongshu.com/",
+}
+PLATFORM_TASK_NAMES = {
+    "amap": "review_amap",
+    "dianping": "review_dianping",
+    "douyin": "review_douyin",
+    "eleme": "delivery_eleme",
+    "jdwm": "delivery_jdwm",
+    "meituan": "delivery_meituan",
+}
+CONNECTION_STATUS_COLORS = {
+    "正常": "#167c45",
+    "待验证": "#8a5d00",
+    "门店未出数": "#8a5d00",
+    "疑似掉线": "#c44536",
+    "需要补登": "#c44536",
+    "已停用": "#7d6a5b",
 }
 
 
@@ -435,7 +463,7 @@ def auth_mode_key_from_choice(value: str) -> str:
 
 def session_status_display_name(status: str) -> str:
     key = str(status).strip()
-    return SESSION_STATUS_LABELS.get(key, key or "待登录")
+    return SESSION_STATUS_LABELS.get(key, key or "未确认")
 
 
 def session_status_key_from_choice(value: str) -> str:
@@ -456,6 +484,80 @@ def _slugify(value: str) -> str:
 
 def default_session_file(platform: str, account_alias: str) -> str:
     return f"auth/{_slugify(platform)}__{_slugify(account_alias)}.state.json"
+
+
+def resolve_db_path(root_dir: Path, env_values: dict[str, str]) -> Path:
+    raw_value = env_values.get("GBM_DB_PATH", "data/monitor.db").strip() or "data/monitor.db"
+    db_path = Path(raw_value)
+    if not db_path.is_absolute():
+        db_path = root_dir / db_path
+    return db_path.resolve()
+
+
+def format_local_timestamp(value: datetime | None) -> str:
+    if value is None:
+        return "还没有成功抓取"
+    return value.astimezone().strftime("%Y-%m-%d %H:%M")
+
+
+def platform_interval_minutes(env_values: dict[str, str], platform: str) -> int:
+    if platform in {"meituan", "eleme", "jdwm"}:
+        raw_value = env_values.get("GBM_DELIVERY_INTERVAL_MINUTES", "30").strip() or "30"
+    else:
+        raw_value = env_values.get("GBM_REVIEW_INTERVAL_MINUTES", "60").strip() or "60"
+    try:
+        return max(int(raw_value), 1)
+    except ValueError:
+        return 60
+
+
+def compute_connection_snapshot(
+    binding: SessionBindingConfig,
+    env_values: dict[str, str],
+    task_success_map: dict[str, datetime],
+    latest_metric_map: dict[tuple[str, str], datetime],
+    now: datetime,
+) -> ConnectionSnapshot:
+    task_name = PLATFORM_TASK_NAMES.get(binding.platform, "")
+    last_success_dt = task_success_map.get(task_name)
+    last_metric_dt = latest_metric_map.get((binding.store_id, binding.platform))
+    interval_minutes = platform_interval_minutes(env_values, binding.platform)
+    freshness_window = timedelta(minutes=max(interval_minutes * 3, 90))
+
+    status = "待验证"
+    hint = "先点“打开对应后台”完成登录，再回首页点“开始联通测试”。"
+    if binding.status == "已停用":
+        status = "已停用"
+        hint = "当前平台已停用，不参与自动抓取。"
+    elif binding.status == "需补登录":
+        status = "需要补登"
+        hint = "这条链路被标记成需要补登。请重新登录后台后，再做一次联通测试。"
+    elif last_metric_dt is not None:
+        if now - last_metric_dt <= freshness_window:
+            status = "正常"
+            hint = "最近这家门店已经成功出数，可以直接看飞书和结果。"
+        elif last_success_dt is not None and now - last_success_dt <= freshness_window:
+            status = "门店未出数"
+            hint = "程序最近跑通了，但这家门店暂时还没有新的经营/评价数据。"
+        else:
+            status = "疑似掉线"
+            hint = "之前出过数，但最近一直没有更新。请重新登录或检查采集链路。"
+    elif last_success_dt is not None:
+        if now - last_success_dt <= freshness_window:
+            status = "门店未出数"
+            hint = "程序最近跑通了，但当前门店还没刷出新数据。"
+        else:
+            status = "待验证"
+            hint = "之前跑通过，但最近没有再次验证。建议重新做一次联通测试。"
+
+    return ConnectionSnapshot(
+        store_id=binding.store_id,
+        platform=binding.platform,
+        connection_status=status,
+        connection_hint=hint,
+        last_success_at=format_local_timestamp(last_success_dt),
+        last_metric_at=format_local_timestamp(last_metric_dt),
+    )
 
 
 def load_session_bindings(path: Path, registry_bindings: list[PlatformBindingConfig], machine_alias: str) -> list[SessionBindingConfig]:
@@ -520,8 +622,11 @@ def save_session_bindings(path: Path, bindings: list[SessionBindingConfig]) -> N
 def _normalize_session_status(value: str) -> str:
     mapping = {
         "待登录": "未初始化",
+        "未确认": "未初始化",
         "已可用": "可复用",
+        "已确认": "可复用",
         "需要重登": "需补登录",
+        "需补登": "需补登录",
         "暂停使用": "已停用",
     }
     normalized = mapping.get(str(value).strip(), str(value).strip())
@@ -558,6 +663,9 @@ class ControlCenterApp:
 
         ensure_env_file(self.env_path, self.root_dir / ".env.example")
         self.env_values = load_env_values(self.env_path)
+        self.db_path = resolve_db_path(self.root_dir, self.env_values)
+        self.storage = Storage(self.db_path)
+        self.storage.init_schema()
         self.registry_bindings = load_registry_bindings(self.registry_path)
         self.store_targets = merge_store_targets(load_store_targets(self.rules_path), self.registry_bindings)
         self.machine_alias = current_machine_alias()
@@ -576,7 +684,10 @@ class ControlCenterApp:
         self.target_source_flags: dict[str, tk.BooleanVar] = {}
         self.binding_rows: list[dict[str, object]] = []
         self.session_status_vars: dict[tuple[str, str], tk.StringVar] = {}
-        self.session_last_login_vars: dict[tuple[str, str], tk.StringVar] = {}
+        self.session_connection_vars: dict[tuple[str, str], tk.StringVar] = {}
+        self.session_last_success_vars: dict[tuple[str, str], tk.StringVar] = {}
+        self.session_last_metric_vars: dict[tuple[str, str], tk.StringVar] = {}
+        self.session_hint_vars: dict[tuple[str, str], tk.StringVar] = {}
         self.summary_vars: dict[str, tk.StringVar] = {}
         self.nav_buttons: dict[str, ttk.Button] = {}
         self.page_shells: dict[str, ttk.Frame] = {}
@@ -804,7 +915,7 @@ class ControlCenterApp:
         items = [
             ("start", "开始使用"),
             ("stores", "门店配置"),
-            ("login", "平台登录"),
+            ("login", "平台联通"),
             ("results", "飞书结果"),
         ]
         for key, title in items:
@@ -929,10 +1040,10 @@ class ControlCenterApp:
         advanced_fields = [
             ("GBM_REVIEW_WINDOW_START", "评价监控开始时间"),
             ("GBM_REVIEW_WINDOW_END", "评价监控结束时间"),
-            ("GBM_DELIVERY_LUNCH_START", "外卖午餐营业时段开始"),
-            ("GBM_DELIVERY_LUNCH_END", "外卖午餐营业时段结束"),
-            ("GBM_DELIVERY_DINNER_START", "外卖晚餐营业时段开始"),
-            ("GBM_DELIVERY_DINNER_END", "外卖晚餐营业时段结束"),
+            ("GBM_DELIVERY_LUNCH_START", "经营高峰时段一开始"),
+            ("GBM_DELIVERY_LUNCH_END", "经营高峰时段一结束"),
+            ("GBM_DELIVERY_DINNER_START", "经营高峰时段二开始"),
+            ("GBM_DELIVERY_DINNER_END", "经营高峰时段二结束"),
         ]
         for idx, (key, label) in enumerate(advanced_fields):
             ttk.Label(advanced_frame, text=label).grid(row=idx, column=0, sticky="w", pady=4)
@@ -1091,25 +1202,84 @@ class ControlCenterApp:
         frame.columnconfigure(4, weight=1)
         frame.columnconfigure(5, weight=1)
 
+    def _load_connection_snapshots(self) -> dict[tuple[str, str], ConnectionSnapshot]:
+        try:
+            task_success_map = self.storage.latest_task_success_map()
+            latest_metric_map = self.storage.latest_metric_timestamps()
+        except Exception:  # noqa: BLE001
+            task_success_map = {}
+            latest_metric_map = {}
+
+        now = datetime.now().astimezone()
+        snapshots: dict[tuple[str, str], ConnectionSnapshot] = {}
+        for item in self.session_bindings:
+            key = (item.store_id, item.platform)
+            snapshots[key] = compute_connection_snapshot(
+                binding=item,
+                env_values=self.env_values,
+                task_success_map=task_success_map,
+                latest_metric_map=latest_metric_map,
+                now=now,
+            )
+        return snapshots
+
+    def _sync_session_registry_from_health(self) -> None:
+        snapshots = self._load_connection_snapshots()
+        updated_rows: list[SessionBindingConfig] = []
+        changed = False
+        for item in self.session_bindings:
+            key = (item.store_id, item.platform)
+            snapshot = snapshots.get(key)
+            next_status = item.status
+            next_login_at = item.last_login_at
+            if snapshot is not None:
+                if snapshot.connection_status in {"正常", "门店未出数"} and item.status != "已停用":
+                    next_status = "可复用"
+                    if next_login_at in {"", "还没有完成首次登录"}:
+                        next_login_at = snapshot.last_success_at
+                elif snapshot.connection_status in {"疑似掉线", "需要补登"} and item.status != "已停用":
+                    next_status = "需补登录"
+            updated_rows.append(
+                SessionBindingConfig(
+                    store_id=item.store_id,
+                    store_name=item.store_name,
+                    platform=item.platform,
+                    machine_alias=item.machine_alias,
+                    session_file=item.session_file,
+                    status=next_status,
+                    last_login_at=next_login_at,
+                    note=item.note,
+                )
+            )
+            changed = changed or next_status != item.status or next_login_at != item.last_login_at
+        if changed:
+            self.session_bindings = updated_rows
+            save_session_bindings(self.session_path, self.session_bindings)
+
     def _build_session_bindings(self, parent: ttk.Frame) -> None:
-        frame = ttk.LabelFrame(parent, text="平台登录状态", padding=14, style="Card.TLabelframe")
+        frame = ttk.LabelFrame(parent, text="平台接通状态", padding=14, style="Card.TLabelframe")
         frame.pack(fill="x", pady=(0, 12))
+        snapshots = self._load_connection_snapshots()
         ttk.Label(
             frame,
-            text="你不需要自己去找任何本地会话文件。首次在这台正式运行电脑上登录一次后，系统就默认把登录状态记在这台电脑上。只有平台失效时，再点“打开对应后台”补一次。",
+            text="这里不再用“我已登录”假装已经接通。现在分两层看：登录确认只是人工记录；真正有没有接通，要看系统自己判断出来的联通状态、最近成功刷新和最近出数时间。只有联通状态正常，才算真的接好了。",
             wraplength=1100,
             justify="left",
         ).grid(row=0, column=0, columnspan=8, sticky="w", pady=(0, 8))
 
-        headings = ["门店", "平台", "当前状态", "最后登录时间", "打开对应后台", "我已登录", "需要重登"]
+        headings = ["门店", "平台", "登录确认", "联通状态", "最近成功刷新", "最近出数时间", "去后台登录", "标记需补登"]
         for col, title in enumerate(headings):
             ttk.Label(frame, text=title).grid(row=1, column=col, sticky="w", padx=(0, 8))
 
-        self.session_last_login_vars = {}
-        for idx, item in enumerate(self.session_bindings, start=2):
+        self.session_connection_vars = {}
+        self.session_last_success_vars = {}
+        self.session_last_metric_vars = {}
+        self.session_hint_vars = {}
+        row_idx = 2
+        for item in self.session_bindings:
             key = (item.store_id, item.platform)
-            ttk.Label(frame, text=item.store_name).grid(row=idx, column=0, sticky="w", pady=4)
-            ttk.Label(frame, text=platform_display_name(item.platform)).grid(row=idx, column=1, sticky="w", pady=4)
+            ttk.Label(frame, text=item.store_name).grid(row=row_idx, column=0, sticky="w", pady=4)
+            ttk.Label(frame, text=platform_display_name(item.platform)).grid(row=row_idx, column=1, sticky="w", pady=4)
 
             status_var = tk.StringVar(value=session_status_display_name(item.status))
             status_box = ttk.Combobox(
@@ -1119,46 +1289,79 @@ class ControlCenterApp:
                 width=10,
                 state="readonly",
             )
-            status_box.grid(row=idx, column=2, sticky="w", pady=4)
+            status_box.grid(row=row_idx, column=2, sticky="w", pady=4)
             self.session_status_vars[key] = status_var
 
-            last_login_var = tk.StringVar(value=item.last_login_at or "还没有完成首次登录")
-            ttk.Label(frame, textvariable=last_login_var).grid(row=idx, column=3, sticky="w", pady=4, padx=(8, 0))
-            self.session_last_login_vars[key] = last_login_var
+            snapshot = snapshots.get(
+                key,
+                ConnectionSnapshot(
+                    store_id=item.store_id,
+                    platform=item.platform,
+                    connection_status="待验证",
+                    connection_hint="先去后台登录，再点开始联通测试。",
+                    last_success_at="还没有成功抓取",
+                    last_metric_at="还没有成功抓取",
+                ),
+            )
+
+            connection_var = tk.StringVar(value=snapshot.connection_status)
+            color = CONNECTION_STATUS_COLORS.get(snapshot.connection_status, self.theme["text"])
+            tk.Label(
+                frame,
+                textvariable=connection_var,
+                fg=color,
+                bg=self.theme["panel"],
+                font=(self.font_family, 12, "bold"),
+            ).grid(row=row_idx, column=3, sticky="w", pady=4, padx=(8, 0))
+            self.session_connection_vars[key] = connection_var
+
+            last_success_var = tk.StringVar(value=snapshot.last_success_at)
+            ttk.Label(frame, textvariable=last_success_var).grid(row=row_idx, column=4, sticky="w", pady=4, padx=(8, 0))
+            self.session_last_success_vars[key] = last_success_var
+
+            last_metric_var = tk.StringVar(value=snapshot.last_metric_at)
+            ttk.Label(frame, textvariable=last_metric_var).grid(row=row_idx, column=5, sticky="w", pady=4, padx=(8, 0))
+            self.session_last_metric_vars[key] = last_metric_var
 
             ttk.Button(
                 frame,
-                text="打开对应后台",
+                text="去后台登录",
                 style="Secondary.TButton",
                 command=lambda current=item.platform: self.open_platform_login(current),
-            ).grid(row=idx, column=4, sticky="w", pady=4, padx=(8, 0))
+            ).grid(row=row_idx, column=6, sticky="w", pady=4, padx=(8, 0))
             ttk.Button(
                 frame,
-                text="我已登录",
-                style="Secondary.TButton",
-                command=lambda item_key=key: self.mark_session_reusable(item_key),
-            ).grid(row=idx, column=5, sticky="w", pady=4, padx=(8, 0))
-            ttk.Button(
-                frame,
-                text="需要重登",
+                text="标记需补登",
                 style="Secondary.TButton",
                 command=lambda item_key=key: self.mark_session_relogin(item_key),
-            ).grid(row=idx, column=6, sticky="w", pady=4, padx=(8, 0))
+            ).grid(row=row_idx, column=7, sticky="w", pady=4, padx=(8, 0))
 
-        frame.columnconfigure(3, weight=1)
+            hint_var = tk.StringVar(value=snapshot.connection_hint)
+            ttk.Label(
+                frame,
+                textvariable=hint_var,
+                wraplength=1060,
+                justify="left",
+                style="Muted.TLabel",
+            ).grid(row=row_idx + 1, column=2, columnspan=6, sticky="w", pady=(0, 8))
+            self.session_hint_vars[key] = hint_var
+            row_idx += 2
+
+        frame.columnconfigure(4, weight=1)
+        frame.columnconfigure(5, weight=1)
 
     def _build_actions(self, parent: ttk.Frame) -> None:
         frame = ttk.LabelFrame(parent, text="第三步：开始联通测试", padding=18, style="Card.TLabelframe")
         frame.pack(fill="x", pady=(0, 12))
         ttk.Label(
             frame,
-            text="第一次只需要点下面三个主按钮：先保存设置，再发飞书测试，最后开始联通测试。联通测试跑通后，老板平时主要看飞书，不需要天天进来研究程序。",
+            text="第一次只需要按下面三个步骤走：先保存并检查基础环境，再发飞书测试，最后开始联通测试。联通测试跑通后，老板平时主要看飞书，不需要天天进来研究程序。",
             style="Muted.TLabel",
         ).grid(
             row=0, column=0, columnspan=6, sticky="w", pady=(0, 10)
         )
         primary_buttons: list[tuple[str, Callable[[], None]]] = [
-            ("① 保存设置", lambda: self.run_task("保存设置", self.install_environment), "Primary.TButton"),
+            ("① 保存并检查", lambda: self.run_task("保存并检查", self.install_environment), "Primary.TButton"),
             ("② 发送飞书测试", lambda: self.run_task("发送飞书测试", self.test_feishu), "Primary.TButton"),
             ("③ 开始联通测试", lambda: self.run_task("开始联通测试", self.run_acceptance), "Primary.TButton"),
         ]
@@ -1201,7 +1404,7 @@ class ControlCenterApp:
             font=(self.font_family, 12),
         )
         self.output.pack(fill="both", expand=True)
-        self.output.insert("end", "橘子谷门店监控已启动。建议先点“① 保存设置”，再点“② 发送飞书测试”，最后点“③ 开始联通测试”。\n")
+        self.output.insert("end", "橘子谷门店监控已启动。建议先点“① 保存并检查”，再点“② 发送飞书测试”，最后点“③ 开始联通测试”。\n")
         self.output.configure(state="disabled")
 
     def _append_output(self, text: str) -> None:
@@ -1371,7 +1574,6 @@ class ControlCenterApp:
         for item in self.session_bindings:
             key = (item.store_id, item.platform)
             status = session_status_key_from_choice(self.session_status_vars[key].get().strip()) or "未初始化"
-            last_login_at = self.session_last_login_vars[key].get().strip() if key in self.session_last_login_vars else item.last_login_at
             session_rows.append(
                 SessionBindingConfig(
                     store_id=item.store_id,
@@ -1380,29 +1582,32 @@ class ControlCenterApp:
                     machine_alias=self.machine_alias,
                     session_file=item.session_file,
                     status=status,
-                    last_login_at=last_login_at,
+                    last_login_at=item.last_login_at,
                     note=item.note,
                 )
             )
         save_session_bindings(self.session_path, session_rows)
 
         self.env_values = load_env_values(self.env_path)
+        self.db_path = resolve_db_path(self.root_dir, self.env_values)
+        self.storage = Storage(self.db_path)
+        self.storage.init_schema()
         self.store_targets = merge_store_targets(load_store_targets(self.rules_path), bindings)
         self.registry_bindings = load_registry_bindings(self.registry_path)
         self.session_bindings = load_session_bindings(self.session_path, self.registry_bindings, self.machine_alias)
+        self._sync_session_registry_from_health()
         self._render_dynamic_sections()
         self._append_output("配置已保存。\n")
         if notify:
             messagebox.showinfo("保存成功", "飞书、时间段、平台绑定、登录状态和 KPI 配置已保存。")
         return True
 
-    def mark_session_reusable(self, key: tuple[str, str]) -> None:
-        self.session_status_vars[key].set("已可用")
-        if key in self.session_last_login_vars:
-            self.session_last_login_vars[key].set(datetime.now().strftime("%Y-%m-%d %H:%M"))
-
     def mark_session_relogin(self, key: tuple[str, str]) -> None:
-        self.session_status_vars[key].set("需要重登")
+        self.session_status_vars[key].set("需补登")
+        if key in self.session_connection_vars:
+            self.session_connection_vars[key].set("需要补登")
+        if key in self.session_hint_vars:
+            self.session_hint_vars[key].set("这条链路已被标记成需要补登。请重新登录后台后，再做一次联通测试。")
 
     def run_task(self, name: str, task: Callable[[], None]) -> None:
         if self.running:
@@ -1424,9 +1629,21 @@ class ControlCenterApp:
                 self._log(f"{name}失败：{exc}")
                 self.root.after(0, lambda: messagebox.showerror("执行失败", str(exc)))
             finally:
+                self.root.after(0, self._refresh_after_run)
                 self.running = False
 
         threading.Thread(target=runner, daemon=True).start()
+
+    def _refresh_after_run(self) -> None:
+        self.env_values = load_env_values(self.env_path)
+        self.db_path = resolve_db_path(self.root_dir, self.env_values)
+        self.storage = Storage(self.db_path)
+        self.storage.init_schema()
+        self.registry_bindings = load_registry_bindings(self.registry_path)
+        self.session_bindings = load_session_bindings(self.session_path, self.registry_bindings, self.machine_alias)
+        self._sync_session_registry_from_health()
+        self.session_bindings = load_session_bindings(self.session_path, self.registry_bindings, self.machine_alias)
+        self._render_dynamic_sections()
 
     def install_environment(self) -> None:
         python_path = Path(sys.executable)

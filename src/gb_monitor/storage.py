@@ -216,6 +216,43 @@ class Storage:
             for platform_name, metric_key, store_name, metric_value_num, metric_value_text, captured_at in rows
         ]
 
+    def latest_metric_timestamps(self) -> dict[tuple[str, str], datetime]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT store_id, platform, MAX(captured_at) AS latest_captured_at
+                FROM metrics
+                GROUP BY store_id, platform
+                """
+            ).fetchall()
+        result: dict[tuple[str, str], datetime] = {}
+        for store_id, platform, latest_captured_at in rows:
+            if not latest_captured_at:
+                continue
+            try:
+                result[(str(store_id), str(platform))] = datetime.fromisoformat(str(latest_captured_at))
+            except ValueError:
+                continue
+        return result
+
+    def latest_task_success_map(self) -> dict[str, datetime]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT task_name, last_success_at
+                FROM task_state
+                """
+            ).fetchall()
+        result: dict[str, datetime] = {}
+        for task_name, last_success_at in rows:
+            if not last_success_at:
+                continue
+            try:
+                result[str(task_name)] = datetime.fromisoformat(str(last_success_at))
+            except ValueError:
+                continue
+        return result
+
     def filter_new_signal_matches(
         self,
         matches: list[SignalMatch],
